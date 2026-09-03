@@ -1,0 +1,22 @@
+---
+---
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page.title | escape }} · {{ site.title | escape }}</title>
+  <link rel="stylesheet"
+        href="{{ '/assets/css/article.css' | relative_url }}">
+</head>
+<body>
+  <header class="site-header">
+    <a href="{{ '/' | relative_url }}">首页</a>
+    <a href="{{ '/guides/' | relative_url }}">文章目录</a>
+  </header>
+
+  <main class="article">
+    {{ content }}
+  </main>
+</body>
+</html>

@@ -1,0 +1,10 @@
+title: "我的网站"
+lang: zh-CN
+url: "https://wangyuyue.xyz"
+baseurl: ""
+
+markdown: kramdown
+
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge

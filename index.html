@@ -2,20 +2,139 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
+
+  <!-- 让网页手机上显示 -->
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>kingo的网站</title>
+
+  <title>复制按钮</title>
+
   <style>
+    /* 页面整体样式 */
     body {
       max-width: 760px;
       margin: 100px auto;
       padding: 20px;
       font-family: system-ui;
-      line-height: 1.7;
+    }
+
+    /* 内容和按钮外面的框 */
+    .copy_box {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid #d3e2ff;
+      border-radius: 8px;
+      background: #f8f8f8;
+    }
+
+    /* 要复制的内容占据剩余空间 */
+    .copy_content {
+      flex: 1;
+    }
+
+    /* 复制按钮样式 */
+    .copy_button {
+      padding: 8px 16px;
+      border: 0;
+      border-radius: 6px;
+      color: white;
+      background: #1677ff;
+      cursor: pointer;
+    }
+
+    /* 鼠标放在按钮上时改变颜色 */
+    .copy_button:hover {
+      background: #0958d9;
+    }
+
+    /* 复制结果提示 */
+    .copy_status {
+      min-height: 24px;
+      color: green;
+    }
+
+    .site_nav {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+
+    .site_nav a {
+      color: #1677ff;
+      text-decoration: none;
+    }
+
+    .site_nav a:hover {
+      text-decoration: underline;
     }
   </style>
 </head>
+
 <body>
-  <h1>你好，欢迎来到我的网站</h1>
-  <p>这是 wangyuyue.xyz 的首页。</p>
+  <nav class="site_nav" aria-label="主导航">
+    <a href="./">首页</a>
+    <a href="./guides/">技术文章</a>
+  </nav>
+  <h1>一键复制示例</h1>
+
+  <div class="copy_box">
+    <!-- 这里是需要复制的内容 -->
+    <span id="copy_content" class="copy_content">
+      https://wangyuyue.xyz
+    </span>
+
+    <!-- type="button" 表示这是普通按钮 -->
+    <button id="copy_button" class="copy_button" type="button">
+      复制
+    </button>
+  </div>
+
+  <!-- 用来显示“复制成功”或者“复制失败” -->
+  <p
+    id="copy_status"
+    class="copy_status"
+    role="status"
+    aria-live="polite"
+  ></p>
+
+  <script>
+    // 复制按钮
+    const copyButton = document.querySelector("#copy_button");
+
+    // 找到需要复制的内容
+    const copyContent = document.querySelector("#copy_content");
+
+    // 找到显示结果的元素
+    const copyStatus = document.querySelector("#copy_status");
+
+    // 监听按钮的点击事件
+    copyButton.addEventListener("click", async () => {
+      // 读取页面中的文字
+      // trim() 用于删除文字两边多余的空格和换行
+      const text = copyContent.textContent.trim();
+
+      try {
+        // 将文字写入系统剪贴板
+        await navigator.clipboard.writeText(text);
+
+        // 修改按钮和提示文字
+        copyButton.textContent = "已复制";
+        copyStatus.textContent = "复制成功！";
+
+        // 两秒后恢复按钮
+        window.setTimeout(() => {
+          copyButton.textContent = "复制";
+          copyStatus.textContent = "";
+        }, 2000);
+      } catch (error) {
+        // 如果浏览器不允许访问剪贴板，就显示错误提示
+        copyStatus.textContent = "复制失败，请手动复制。";
+
+        // 在浏览器开发者工具中输出具体错误
+        console.error("复制失败：", error);
+      }
+    });
+  </script>
 </body>
 </html>
