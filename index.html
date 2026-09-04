@@ -6,7 +6,7 @@
   <!-- 让网页手机上显示 -->
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <title>复制按钮</title>
+ <title>我的个人网站</title>
 
   <style>
     /* 页面整体样式 */
@@ -17,41 +17,62 @@
       font-family: system-ui;
     }
 
-    /* 内容和按钮外面的框 */
-    .copy_box {
+    /* 首页介绍区域 */
+    .hero {
+      padding: 48px 0;
+    }
+
+    .hero_label {
+      margin: 0 0 12px;
+      color: #1677ff;
+      font-weight: 600;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(36px, 7vw, 64px);
+      line-height: 1.1;
+    }
+
+    .hero_description {
+      max-width: 560px;
+      margin: 20px 0 28px;
+      color: #4b5563;
+      font-size: 18px;
+      line-height: 1.8;
+    }
+
+    .hero_actions {
       display: flex;
-      align-items: center;
+      flex-wrap: wrap;
       gap: 12px;
-      padding: 12px;
-      border: 1px solid #d3e2ff;
+    }
+
+    .primary_link,
+    .secondary_link {
+      display: inline-block;
+      padding: 10px 18px;
       border-radius: 8px;
-      background: #f8f8f8;
+      font-weight: 600;
+      text-decoration: none;
     }
 
-    /* 要复制的内容占据剩余空间 */
-    .copy_content {
-      flex: 1;
-    }
-
-    /* 复制按钮样式 */
-    .copy_button {
-      padding: 8px 16px;
-      border: 0;
-      border-radius: 6px;
+    .primary_link {
       color: white;
       background: #1677ff;
-      cursor: pointer;
     }
 
-    /* 鼠标放在按钮上时改变颜色 */
-    .copy_button:hover {
+    .primary_link:hover {
       background: #0958d9;
     }
 
-    /* 复制结果提示 */
-    .copy_status {
-      min-height: 24px;
-      color: green;
+    .secondary_link {
+      color: #1677ff;
+      border: 1px solid #a8c7fa;
+    }
+
+    .secondary_link:hover {
+      background: #f0f6ff;
     }
 
     .site_nav {
@@ -76,65 +97,29 @@
     <a href="./">首页</a>
     <a href="./guides/">技术文章</a>
   </nav>
-  <h1>一键复制示例</h1>
+  <main>
+   <section class="hero">
+    <p class="hero_label">个人网站</p>
 
-  <div class="copy_box">
-    <!-- 这里是需要复制的内容 -->
-    <span id="copy_content" class="copy_content">
-      https://wangyuyue.xyz
-    </span>
+    <h1>你好，我是kingo</h1>
 
-    <!-- type="button" 表示这是普通按钮 -->
-    <button id="copy_button" class="copy_button" type="button">
-      复制
-    </button>
-  </div>
+    <p class="hero_description">
+      这里记录我的项目、技术笔记和学习过程。
+    </p>
 
-  <!-- 用来显示“复制成功”或者“复制失败” -->
-  <p
-    id="copy_status"
-    class="copy_status"
-    role="status"
-    aria-live="polite"
-  ></p>
+    <div class="hero_actions">
+      <a class="primary_link" href="./guides/">阅读技术文章</a>
 
-  <script>
-    // 复制按钮
-    const copyButton = document.querySelector("#copy_button");
-
-    // 找到需要复制的内容
-    const copyContent = document.querySelector("#copy_content");
-
-    // 找到显示结果的元素
-    const copyStatus = document.querySelector("#copy_status");
-
-    // 监听按钮的点击事件
-    copyButton.addEventListener("click", async () => {
-      // 读取页面中的文字
-      // trim() 用于删除文字两边多余的空格和换行
-      const text = copyContent.textContent.trim();
-
-      try {
-        // 将文字写入系统剪贴板
-        await navigator.clipboard.writeText(text);
-
-        // 修改按钮和提示文字
-        copyButton.textContent = "已复制";
-        copyStatus.textContent = "复制成功！";
-
-        // 两秒后恢复按钮
-        window.setTimeout(() => {
-          copyButton.textContent = "复制";
-          copyStatus.textContent = "";
-        }, 2000);
-      } catch (error) {
-        // 如果浏览器不允许访问剪贴板，就显示错误提示
-        copyStatus.textContent = "复制失败，请手动复制。";
-
-        // 在浏览器开发者工具中输出具体错误
-        console.error("复制失败：", error);
-      }
-    });
-  </script>
+      <a
+        class="secondary_link"
+        href="https://github.com/kingo0807"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        查看 GitHub
+      </a>
+    </div>
+   </section>
+  </main>
 </body>
 </html>
