@@ -1,3 +1,5 @@
+---
+---
 <!doctype html>
 <html lang="zh-CN">
 <head>
@@ -89,6 +91,66 @@
     .site_nav a:hover {
       text-decoration: underline;
     }
+
+    /* 项目区域 */
+    .projects {
+      margin-top: 40px;
+    }
+
+    .projects h2 {
+      margin: 0 0 20px;
+      font-size: 24px;
+    }
+
+    /* 卡片自动换行：一行放不下就换行 */
+    .project_list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+
+    .project_card {
+      padding: 20px;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+    }
+
+    .project_card h3 {
+      margin: 0 0 8px;
+    }
+
+    .project_card p {
+      margin: 0 0 16px;
+      color: #4b5563;
+      line-height: 1.7;
+    }
+    
+    .tag_list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 0 0 16px;
+      padding: 0;
+      list-style: none;
+    }
+
+    .tag {
+      padding: 2px 10px;
+      border-radius: 999px;
+      background: #f0f6ff;
+      color: #1677ff;
+      font-size: 13px;
+    }
+
+    .project_card a {
+      color: #1677ff;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .project_card a:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 
@@ -118,6 +180,35 @@
       >
         查看 GitHub
       </a>
+    </div>
+   </section>
+
+   <section class="projects">
+    <h2>我的项目</h2>
+
+    <div class="project_list">
+      {% for project in site.data.projects %}
+      <article class="project_card">
+        <h3>{{ project.name | escape }}</h3>
+        <p>{{ project.description | escape }}</p>
+         
+        {% if project.tags %}
+        <ul class="tag_list">
+          {% for tag in project.tags %}
+          <li class="tag">{{ tag | escape }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if project.link %}
+        <a href="{{ project.link }}" target="_blank" rel="noopener noreferrer">访问项目</a>
+        {% endif %}
+
+        {% if project.repo %}
+        <a href="{{ project.repo }}" target="_blank" rel="noopener noreferrer">源码</a>
+        {% endif %}
+      </article>
+      {% endfor %}
     </div>
    </section>
   </main>

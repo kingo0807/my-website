@@ -1,0 +1,24 @@
+# 首页「我的项目」列表
+# 增删项目只需改这个文件，首页会自动更新。
+# 字段说明：
+#   name        项目名称
+#   description 一句话简介
+#   link        项目访问地址（可留空）
+#   repo        源码仓库地址（可留空）
+
+- name: "我的个人网站"
+  description: "用 Jekyll + GitHub Pages 搭建的个人网站，记录技术笔记与学习过程。"
+  link: "https://wangyuyue.xyz"
+  repo: "https://github.com/kingo0807"
+  tags:
+    - Jekyll
+    - GitHub Pages
+    - HTML
+
+- name: "teedoc 使用笔记"
+  description: "teedoc 文档的本地安装、构建、预览与排错命令整理。"
+  link: "https://wangyuyue.xyz/guides/teedoc/"
+
+- name: "Git 笔记"
+  description: "从基础到进阶的 Git 命令与工作流笔记。"
+  link: "https://wangyuyue.xyz/guides/git/"
