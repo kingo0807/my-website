@@ -1,7 +1,8 @@
 ---
 layout: article
 title: "Git 笔记：从基础到进阶"
-permalink: /guides/git/
+date: 2026-09-03
+description: "从基础到进阶的 Git 命令与工作流笔记。"
 ---
 
 # Git 笔记：从基础到进阶

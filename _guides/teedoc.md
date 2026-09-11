@@ -1,7 +1,8 @@
 ---
 layout: article
 title: "teedoc 本地构建、预览与排错"
-permalink: /guides/teedoc/
+date: 2026-09-03
+description: "teedoc 本地安装、构建、预览与排错命令整理。"
 ---
 
 # teedoc 本地构建、预览与排错命令整理
