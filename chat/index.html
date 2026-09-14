@@ -308,6 +308,7 @@
 
     <div class="sheet-actions">
       <button class="primary" id="set-save" type="button">保存</button>
+      <button id="set-test" type="button">测试连接</button>
       <button id="set-close" type="button">关闭</button>
       <button class="danger" id="set-clear" type="button">清除本机数据</button>
     </div>
@@ -1039,7 +1040,9 @@
       }
       var message = err && err.message ? err.message : String(err);
       if (err instanceof TypeError || /Failed to fetch|NetworkError|Load failed/i.test(message)) {
-        message = '连不上网。请检查手机的网络，或者稍后再试。';
+        message = state.backend
+          ? '连不上家庭服务器。请检查设置里的地址，或者确认后端还在运行。'
+          : '连不上网。请检查手机的网络，或者稍后再试。';
       }
       live.content = (live.content ? live.content + '\n\n' : '') + '⚠️ ' + message;
       live.failed = true;
@@ -1127,6 +1130,55 @@
   $('btn-settings').addEventListener('click', openSheet);
   $('set-close').addEventListener('click', closeSheet);
   $('set-save').addEventListener('click', saveSettings);
+
+  /* 用输入框里当前的值发一个小请求，先确认地址/钥匙是对的，再谈聊天。 */
+  function testConnection() {
+    var btn = $('set-test');
+    var backend = $('set-backend').value.trim().replace(/\/+$/, '');
+    var key = $('set-key').value.trim();
+    var code = $('set-code').value.trim();
+    var model = $('set-model').value;
+    if (!backend && !key) { toast('先填钥匙，或者填家庭服务器地址'); return; }
+
+    var url = backend ? backend + '/chat' : (DEFAULT_BASE + '/chat/completions');
+    var headers = { 'Content-Type': 'application/json' };
+    if (backend) { if (code) headers['X-Family-Code'] = code; }
+    else headers['Authorization'] = 'Bearer ' + key;
+
+    btn.disabled = true;
+    btn.textContent = '测试中…';
+    fetch(url, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: 'user', content: '你好' }],
+        stream: false,
+        thinking: { type: 'disabled' }
+      })
+    }).then(function (res) {
+      return res.text().then(function (t) {
+        if (res.ok) {
+          var reply = '';
+          try {
+            var j = JSON.parse(t);
+            reply = ((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '').slice(0, 30);
+          } catch (e) { /* 有响应就够了 */ }
+          toast('连接成功，可以用了' + (reply ? '：' + reply : ''));
+        } else {
+          toast(describeHttp(res.status, t));
+        }
+      });
+    }).catch(function () {
+      toast(backend
+        ? '连不上这个地址。检查有没有写错、后端是不是在运行。'
+        : '连不上网，检查手机网络后再试。');
+    }).then(function () {
+      btn.disabled = false;
+      btn.textContent = '测试连接';
+    });
+  }
+  $('set-test').addEventListener('click', testConnection);
   $('mode-personal').addEventListener('click', function () { setMode('personal'); });
   $('mode-family').addEventListener('click', function () { setMode('family'); });
   $('set-clear').addEventListener('click', function () {
