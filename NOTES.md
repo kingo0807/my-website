@@ -35,3 +35,15 @@
   - 不改源码：删除旧 OpenAI 再重新导入。
   - 改源码：给深链加 `updateByName=true` 参数，调用已有 `ProviderService::update` 接口按名字更新。
   - 最稳定方案：按内部 `provider_id` 更新，而非按显示名称。
+
+### 2026-09-14 · 手机版「家庭 AI 助手」（纯网页 + PWA）
+
+- 需求：让亲人在手机上用，能拍照/传文件提问，尽量像手机应用。
+- 结论：不需要自建后端。DeepSeek 官方接口允许跨域（预检会回显 Origin），静态网页可以直接调用。
+- 做法要点：
+  - 模型改用 deepseek-flash（支持图像理解）；旧的 deepseek-chat / deepseek-reasoner 已不在模型列表里。
+  - 照片在手机本地压缩后以 base64 发送；PDF 用 pdf.js 在本地逐页转成图片；docx 在浏览器里直接解压读取正文。
+  - API Key 不写进网页源码，只存在使用者手机的 localStorage 里。
+  - 做成 PWA：有图标、可添加到主屏幕、独立窗口打开，并带离线外壳缓存。
+- 上线地址：https://wangyuyue.xyz/chat/
+- 源码：chat/ 目录；本地测试脚本在 C:\Users\wyy\Documents\phone-ai（执行 node test-all.mjs，26 项自检）。

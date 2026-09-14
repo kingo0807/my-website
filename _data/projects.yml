@@ -24,7 +24,7 @@
   link: "https://wangyuyue.xyz/guides/git/"
 
 - name: "手机 AI 助手"
-  description: "在手机浏览器直接调用 DeepSeek API 的轻量聊天页，不需要后端，密钥只保存在本机。"
+  description: "给家人用的手机助手：打字或拍照提问，能看照片、PDF、Word，可添加到主屏幕当 App 用。"
   link: "https://wangyuyue.xyz/chat/"
   tags:
     - JavaScript
