@@ -279,7 +279,7 @@
       <div class="field">
         <label for="set-backend">家庭服务器地址</label>
         <input id="set-backend" type="text" placeholder="https://你的后端地址" spellcheck="false">
-        <p class="note">填好后，这台手机不需要任何 Key，打开就能用。</p>
+        <p class="note">填好后，这台手机不需要任何 Key，打开就能用。如果对方给了你一条带 #c= 的链接，点一下那条链接就会自动填好，不用手输。</p>
       </div>
       <div class="field">
         <label for="set-code">家庭口令（如果后端要求）</label>
@@ -349,8 +349,10 @@
   var K_HINT = 'fa_hint_closed';
   var DEFAULT_BASE = 'https://api.deepseek.com';
   var DEFAULT_MODEL = 'deepseek-flash';
-  /* 部署好家庭服务器后，把地址填在这里，亲人打开就能直接用，不需要任何设置。 */
-  var DEFAULT_BACKEND = '';
+  /* 家庭服务器地址：填好后亲人打开就能用，不需要任何设置。 */
+  var DEFAULT_BACKEND = 'https://api.wangyuyue.xyz';
+  /* 后端是否要求家庭口令（这个后端要求）。关掉它会让没有口令的手机不再弹设置。 */
+  var BACKEND_NEEDS_CODE = true;
   var MAX_KEEP = 60;
   var MAX_IMAGES = 6;
   var IMAGE_MAX_SIDE = 1568;
@@ -931,7 +933,10 @@
       if (/model/i.test(detail)) return '模型名不对：' + detail;
       return '这次没成功：' + (detail || '请求格式有问题');
     }
-    if (status === 401 || status === 403) return '钥匙不对或已失效，请点 ⚙ 重新填一次。' + (detail ? '（' + detail + '）' : '');
+    if (status === 401 || status === 403) {
+      if (state.backend) return '家庭口令不对，请点 ⚙ 填一次。' + (detail ? '（' + detail + '）' : '');
+      return '钥匙不对或已失效，请点 ⚙ 重新填一次。' + (detail ? '（' + detail + '）' : '');
+    }
     if (status === 402) return '余额不够了，请到 DeepSeek 平台充值。';
     if (status === 413) return '图片太大了，换一张小一点的试试。';
     if (status === 429) return '问得太快了，等十几秒再试。';
@@ -1224,6 +1229,20 @@
   });
 
   /* ---------- 启动 ---------- */
+  /* 激活链接：口令放在 # 后面。井号后面的内容浏览器不会发给服务器，
+     也不会留在网页源码里，所以口令不会出现在任何公开的地方。 */
+  var hash = location.hash || '';
+  if (hash.indexOf('#c=') === 0) {
+    var incoming = '';
+    try { incoming = decodeURIComponent(hash.slice(3)).trim(); } catch (e) { incoming = hash.slice(3).trim(); }
+    if (incoming) {
+      state.code = incoming;
+      localStorage.setItem(K_CODE, incoming);
+      if (history.replaceState) history.replaceState(null, '', location.pathname + location.search);
+      toast('这台手机已经开通，直接问就行');
+    }
+  }
+
   var params = new URLSearchParams(location.search);
   if (params.get('action') === 'camera') {
     setTimeout(function () { $('pick-camera').click(); }, 400);
@@ -1242,6 +1261,7 @@
   refreshBar();
   renderAll();
   if (!ready()) openSheet();
+  else if (state.backend && BACKEND_NEEDS_CODE && !state.code) openSheet();
 })();
 </script>
 </body>
