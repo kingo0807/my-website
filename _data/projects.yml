@@ -22,3 +22,11 @@
 - name: "Git 笔记"
   description: "从基础到进阶的 Git 命令与工作流笔记。"
   link: "https://wangyuyue.xyz/guides/git/"
+
+- name: "手机 AI 助手"
+  description: "在手机浏览器直接调用 DeepSeek API 的轻量聊天页，不需要后端，密钥只保存在本机。"
+  link: "https://wangyuyue.xyz/chat/"
+  tags:
+    - JavaScript
+    - DeepSeek API
+    - 移动端
