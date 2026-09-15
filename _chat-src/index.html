@@ -1,0 +1,1322 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#1677ff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="小助手">
+<meta name="format-detection" content="telephone=no">
+<title>家庭 AI 助手</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icon-180.png">
+<link rel="icon" href="./icon.svg">
+<style>
+  :root {
+    --blue: #1677ff;
+    --bg: #f4f5f7;
+    --surface: #ffffff;
+    --text: #1f2328;
+    --muted: #6b7280;
+    --border: #e4e7ec;
+    --code-bg: #f2f4f7;
+    --danger: #d4380d;
+    --radius: 16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181d; --surface: #21242b; --text: #e6e8eb;
+      --muted: #9aa1ab; --border: #333841; --code-bg: #2b2f37; --danger: #ff7875;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior-y: none;
+  }
+  .app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+
+  .bar {
+    flex: none; display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px; padding-top: calc(10px + env(safe-area-inset-top));
+    background: var(--surface); border-bottom: 1px solid var(--border);
+  }
+  .bar-main { flex: 1; min-width: 0; }
+  .bar-title { font-weight: 600; font-size: 17px; display: flex; align-items: center; gap: 7px; }
+  .bar-sub { font-size: 12px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #d0d5dd; flex: none; }
+  .dot.ok { background: #22c55e; }
+  .icon-btn {
+    flex: none; width: 40px; height: 40px; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    font-size: 18px; line-height: 1; cursor: pointer; padding: 0;
+  }
+  .icon-btn:active { background: var(--code-bg); }
+
+  .messages { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px 12px 4px; }
+  .empty { color: var(--muted); text-align: center; padding: 28px 8px; }
+  .empty h2 { color: var(--text); font-size: 19px; margin: 0 0 10px; }
+  .empty p { margin: 8px 0; line-height: 1.8; font-size: 15px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 18px; }
+  .chip {
+    padding: 9px 14px; border-radius: 999px; font-size: 14px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer;
+  }
+  .chip:active { background: var(--code-bg); }
+
+  .msg { display: flex; flex-direction: column; margin-bottom: 14px; }
+  .msg.user { align-items: flex-end; }
+  .msg.assistant { align-items: flex-start; }
+  .bubble {
+    max-width: 90%; padding: 11px 13px; border-radius: var(--radius);
+    background: var(--surface); border: 1px solid var(--border);
+    font-size: 16px; line-height: 1.8;
+    overflow-wrap: anywhere; word-break: break-word;
+  }
+  .msg.user .bubble { background: var(--blue); color: #fff; border-color: transparent; }
+  .bubble.failed { border-color: var(--danger); }
+
+  .bubble p { margin: 0 0 9px; }
+  .bubble > :last-child { margin-bottom: 0; }
+  .bubble h1, .bubble h2, .bubble h3, .bubble h4, .bubble h5, .bubble h6 { margin: 14px 0 8px; line-height: 1.4; }
+  .bubble h1 { font-size: 20px; } .bubble h2 { font-size: 18px; } .bubble h3 { font-size: 17px; }
+  .bubble h4, .bubble h5, .bubble h6 { font-size: 16px; }
+  .bubble ul, .bubble ol { margin: 8px 0; padding-left: 24px; }
+  .bubble li { margin: 4px 0; }
+  .bubble a { color: var(--blue); }
+  .bubble code {
+    background: var(--code-bg); padding: 1px 5px; border-radius: 5px;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 14px;
+  }
+  .bubble pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px; margin: 8px 0; overflow-x: auto; -webkit-overflow-scrolling: touch;
+  }
+  .bubble pre code { background: none; padding: 0; font-size: 13.5px; line-height: 1.6; }
+  .bubble blockquote { margin: 8px 0; padding: 2px 0 2px 10px; border-left: 3px solid var(--border); color: var(--muted); }
+  .bubble hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+
+  .msg-imgs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .msg-imgs img { max-width: 150px; max-height: 150px; border-radius: 10px; display: block; }
+  .msg-note { font-size: 13px; opacity: .75; margin-top: 6px; }
+
+  .reasoning { margin: 0 0 9px; }
+  .reasoning summary { font-size: 14px; color: var(--muted); cursor: pointer; }
+  .reasoning .body {
+    margin-top: 6px; padding: 9px 11px; border-radius: 9px;
+    background: var(--code-bg); color: var(--muted);
+    font-size: 13.5px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .msg-tools { margin: 5px 0 0 4px; display: flex; gap: 14px; }
+  .msg-tools button { border: none; background: none; color: var(--muted); font-size: 13px; padding: 3px 0; cursor: pointer; }
+  .cursor { display: inline-block; width: 8px; height: 16px; background: var(--blue); vertical-align: -2px; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+
+  .attachments {
+    flex: none; display: flex; gap: 8px; padding: 8px 12px 0;
+    overflow-x: auto; background: var(--surface); border-top: 1px solid var(--border);
+  }
+  .attachments[hidden] { display: none; }
+  .att {
+    position: relative; flex: none; width: 68px; height: 68px;
+    border-radius: 10px; overflow: hidden; border: 1px solid var(--border); background: var(--code-bg);
+  }
+  .att img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .att .doc {
+    width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: var(--muted); text-align: center; padding: 4px; line-height: 1.3;
+  }
+  .att button {
+    position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; padding: 0;
+    border-radius: 50%; border: none; background: rgba(0,0,0,.6); color: #fff;
+    font-size: 13px; line-height: 18px; cursor: pointer;
+  }
+  .att-progress { padding: 8px 14px; font-size: 13px; color: var(--muted); }
+
+  .composer {
+    flex: none; display: flex; align-items: flex-end; gap: 6px;
+    padding: 8px 10px; padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    background: var(--surface); border-top: 1px solid var(--border);
+  }
+  .composer .icon-btn { width: 42px; height: 42px; font-size: 19px; }
+  .composer textarea {
+    flex: 1; min-width: 0; resize: none; max-height: 132px;
+    padding: 11px 12px; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    font-family: inherit; font-size: 16px; line-height: 1.5; outline: none;
+  }
+  .composer textarea:focus { border-color: var(--blue); }
+  .send, .stop {
+    flex: none; height: 42px; min-width: 62px; padding: 0 15px;
+    border-radius: 12px; border: none; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  .send { background: var(--blue); color: #fff; }
+  .send:disabled { background: #b9d3ff; }
+  .stop { background: var(--code-bg); color: var(--text); border: 1px solid var(--border); }
+
+  .install-hint {
+    flex: none; display: flex; align-items: center; gap: 8px;
+    padding: 9px 12px; background: #eaf2ff; color: #0b4aa2; font-size: 13px; line-height: 1.5;
+  }
+  @media (prefers-color-scheme: dark) { .install-hint { background: #1b2b45; color: #9ec5ff; } }
+  .install-hint[hidden] { display: none; }
+  .install-hint button { flex: none; border: none; background: none; color: inherit; font-size: 16px; cursor: pointer; }
+
+  .sheet { position: fixed; inset: 0; background: rgba(15, 23, 42, .45); display: flex; align-items: flex-end; justify-content: center; z-index: 20; }
+  .sheet[hidden] { display: none; }
+  .sheet-card {
+    width: 100%; max-width: 560px; max-height: 92vh; overflow-y: auto;
+    background: var(--surface); border-radius: 18px 18px 0 0;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  }
+  @media (min-width: 640px) { .sheet { align-items: center; } .sheet-card { border-radius: 18px; } }
+  .sheet-card h2 { margin: 0 0 14px; font-size: 18px; }
+  .field { margin-bottom: 15px; }
+  .field label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 7px; }
+  .field input, .field select, .field textarea {
+    width: 100%; padding: 11px 12px; border-radius: 11px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    font-family: inherit; font-size: 16px; outline: none;
+  }
+  .field textarea { resize: vertical; }
+  .field .note { font-size: 12.5px; color: var(--muted); margin: 7px 0 0; line-height: 1.65; }
+  .balance-row { display: flex; align-items: center; gap: 10px; }
+  .balance-row span { flex: 1; min-width: 0; font-size: 15px; line-height: 1.5; }
+  .balance-row button {
+    flex: none; padding: 8px 14px; border-radius: 10px; font-size: 14px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  }
+  .balance-row button:disabled { opacity: .6; }
+  .seg { display: flex; gap: 8px; }
+  .seg button {
+    flex: 1; padding: 11px 8px; border-radius: 11px; font-size: 14px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  }
+  .seg button.on { background: var(--blue); color: #fff; border-color: var(--blue); font-weight: 600; }
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .switch input { width: 24px; height: 24px; flex: none; }
+  .sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .sheet-actions button {
+    padding: 11px 17px; border-radius: 11px; font-size: 15px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  }
+  .sheet-actions .primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .sheet-actions .danger { color: var(--danger); }
+  .help { margin-top: 16px; font-size: 13.5px; color: var(--muted); }
+  .help summary { cursor: pointer; color: var(--text); padding: 4px 0; }
+  .help ol, .help ul { padding-left: 20px; line-height: 1.85; }
+  .help p { line-height: 1.75; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%);
+    background: rgba(17, 24, 39, .92); color: #fff; padding: 10px 16px;
+    border-radius: 12px; font-size: 14px; max-width: 84vw; text-align: center;
+    z-index: 40; pointer-events: none; opacity: 0; transition: opacity .2s;
+  }
+  .toast.show { opacity: 1; }
+
+  .lightbox {
+    position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 50;
+    display: flex; align-items: center; justify-content: center; padding: 12px;
+  }
+  .lightbox[hidden] { display: none; }
+  .lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="bar-main">
+      <div class="bar-title"><span class="dot" id="status-dot"></span>小助手</div>
+      <div class="bar-sub" id="bar-sub">正在准备…</div>
+    </div>
+    <button class="icon-btn" id="btn-new" title="新对话" aria-label="新对话">＋</button>
+    <button class="icon-btn" id="btn-settings" title="设置" aria-label="设置">⚙</button>
+  </header>
+
+  <div class="install-hint" id="install-hint" hidden>
+    <span style="flex:1">想当 App 用？点浏览器菜单，选「添加到主屏幕」，桌面上就有图标了。</span>
+    <button id="install-close" aria-label="关闭">✕</button>
+  </div>
+
+  <main class="messages" id="messages"></main>
+
+  <div class="attachments" id="attachments" hidden></div>
+  <div class="att-progress" id="att-progress" hidden></div>
+
+  <form class="composer" id="composer" autocomplete="off">
+    <button class="icon-btn" id="btn-camera" type="button" title="拍照" aria-label="拍照">📷</button>
+    <button class="icon-btn" id="btn-file" type="button" title="传文件" aria-label="传文件">📎</button>
+    <textarea id="input" rows="1" placeholder="打字，或点 📷 拍照问我" enterkeyhint="send"></textarea>
+    <button class="send" id="send" type="submit">发送</button>
+    <button class="stop" id="stop" type="button" hidden>停止</button>
+  </form>
+</div>
+
+<input type="file" id="pick-camera" accept="image/*" capture="environment" hidden>
+<input type="file" id="pick-file" accept="image/*,application/pdf,.docx,.txt,.md,.csv,.json,.log" multiple hidden>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-card">
+    <h2>设置</h2>
+
+    <div class="field">
+      <label>怎么连上服务</label>
+      <div class="seg">
+        <button type="button" id="mode-personal">自己填 Key</button>
+        <button type="button" id="mode-family">用家庭服务器</button>
+      </div>
+      <p class="note" id="mode-note"></p>
+    </div>
+
+    <div id="box-personal">
+      <div class="field">
+        <label for="set-key">DeepSeek API Key</label>
+        <input id="set-key" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false">
+        <p class="note">只保存在这台手机里，不会上传到任何地方，也不会出现在网页源码里。</p>
+      </div>
+    </div>
+
+    <div id="box-family" hidden>
+      <div class="field">
+        <label for="set-backend">家庭服务器地址</label>
+        <input id="set-backend" type="text" placeholder="https://你的后端地址" spellcheck="false">
+        <p class="note">填好后，这台手机不需要任何 Key，打开就能用。如果对方给了你一条带 #c= 的链接，点一下那条链接就会自动填好，不用手输。</p>
+      </div>
+      <div class="field">
+        <label for="set-code">家庭口令（如果后端要求）</label>
+        <input id="set-code" type="password" placeholder="留空表示不需要" autocomplete="off">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>账户余额</label>
+      <div class="balance-row">
+        <span id="balance-text">还没查</span>
+        <button type="button" id="btn-balance">查询余额</button>
+      </div>
+      <p class="note">余额是账户级别的，所有人都共用这一份。不足时谁都问不了，记得及时充值。</p>
+    </div>
+
+    <details class="help">
+      <summary>高级设置</summary>
+      <div class="field" style="margin-top:12px">
+        <label for="set-model">模型</label>
+        <select id="set-model">
+          <option value="deepseek-flash">deepseek-flash（推荐，能看图）</option>
+          <option value="deepseek-v4-pro">deepseek-v4-pro（不能看图）</option>
+        </select>
+      </div>
+      <div class="field switch">
+        <label for="set-thinking" style="margin:0">深入思考（更准，但慢一些）</label>
+        <input id="set-thinking" type="checkbox">
+      </div>
+      <div class="field">
+        <label for="set-sys">系统提示词（可选）</label>
+        <textarea id="set-sys" rows="2" placeholder="例如：请用简单的话回答，别用专业术语。"></textarea>
+      </div>
+    </details>
+
+    <div class="sheet-actions">
+      <button class="primary" id="set-save" type="button">保存</button>
+      <button id="set-test" type="button">测试连接</button>
+      <button id="set-close" type="button">关闭</button>
+      <button class="danger" id="set-clear" type="button">清除本机数据</button>
+    </div>
+
+    <details class="help">
+      <summary>这个助手能做什么、不能做什么</summary>
+      <p><b>能做：</b>回答问题；看照片和截图（药盒、化验单、说明书、路牌、外文菜单）；读 PDF、Word 和文本文件；写东西、翻译、算账。</p>
+      <p><b>不能做：</b>它碰不到你的手机相册和通讯录，也不能替你打电话、发消息、付款。它只认识你发给它的内容。</p>
+      <p><b>照片会不会被存下来？</b>照片只在你按下发送时传给 DeepSeek 用于回答，这个网页不会保存它们；聊天文字存在你自己手机里。</p>
+    </details>
+
+    <details class="help">
+      <summary>怎么获取 API Key？</summary>
+      <ol>
+        <li>打开 platform.deepseek.com，注册并登录。</li>
+        <li>进入「API keys」，点「创建 API key」。</li>
+        <li>复制 sk- 开头的那串，粘贴到上面的输入框。</li>
+      </ol>
+      <p>余额和用量都在同一个平台查看。建议单独建一个 Key 专供手机使用，丢了可以直接删掉。</p>
+    </details>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox" hidden><img id="lightbox-img" alt=""></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var K_KEY = 'fa_key';
+  var K_BACKEND = 'fa_backend';
+  var K_CODE = 'fa_code';
+  var K_MODEL = 'fa_model';
+  var K_SYS = 'fa_system';
+  var K_THINK = 'fa_thinking';
+  var K_CHAT = 'fa_chat';
+  var K_HINT = 'fa_hint_closed';
+  var DEFAULT_BASE = 'https://api.deepseek.com';
+  var DEFAULT_MODEL = 'deepseek-flash';
+  /* 家庭服务器地址：填好后亲人打开就能用，不需要任何设置。 */
+  var DEFAULT_BACKEND = 'https://api.wangyuyue.xyz';
+  /* 后端是否要求家庭口令（这个后端要求）。关掉它会让没有口令的手机不再弹设置。 */
+  var BACKEND_NEEDS_CODE = true;
+  var MAX_KEEP = 60;
+  var MAX_IMAGES = 6;
+  var IMAGE_MAX_SIDE = 1568;
+  var PDF_MAX_PAGES = 5;
+
+  function $(id) { return document.getElementById(id); }
+  var messagesEl = $('messages');
+  var inputEl = $('input');
+  var composerEl = $('composer');
+  var sendBtn = $('send');
+  var stopBtn = $('stop');
+  var dotEl = $('status-dot');
+  var subEl = $('bar-sub');
+  var sheetEl = $('sheet');
+  var attsEl = $('attachments');
+  var progressEl = $('att-progress');
+
+  var state = {
+    key: localStorage.getItem(K_KEY) || '',
+    backend: localStorage.getItem(K_BACKEND) || DEFAULT_BACKEND,
+    code: localStorage.getItem(K_CODE) || '',
+    model: localStorage.getItem(K_MODEL) || DEFAULT_MODEL,
+    system: localStorage.getItem(K_SYS) || '',
+    thinking: localStorage.getItem(K_THINK) !== '0',
+    messages: []
+  };
+  try {
+    var saved = JSON.parse(localStorage.getItem(K_CHAT) || '[]');
+    if (Object.prototype.toString.call(saved) === '[object Array]') state.messages = saved;
+  } catch (e) { state.messages = []; }
+
+  var attachments = [];
+  var busy = false;
+  var controller = null;
+  var composing = false;
+  var pdfLibPromise = null;
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function renderMarkdown(src) {
+    var blocks = [];
+    var text = String(src).replace(/```([^\n]*)\n?([\s\S]*?)(?:```|$)/g, function (m, lang, code) {
+      blocks.push(code);
+      return '\u0000B' + (blocks.length - 1) + '\u0000';
+    });
+
+    text = escapeHtml(text);
+    text = text.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    text = text.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+    text = text.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+    var out = [];
+    var para = [];
+    var listType = null;
+
+    function flushPara() {
+      if (para.length) { out.push('<p>' + para.join('<br>') + '</p>'); para = []; }
+    }
+    function closeList() {
+      if (listType) { out.push('</' + listType + '>'); listType = null; }
+    }
+
+    var lines = text.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var h = /^(#{1,6})\s+(.*)$/.exec(line);
+      if (h) {
+        flushPara(); closeList();
+        var lv = h[1].length;
+        out.push('<h' + lv + '>' + h[2] + '</h' + lv + '>');
+        continue;
+      }
+      var ul = /^\s*[-*+]\s+(.*)$/.exec(line);
+      if (ul) {
+        flushPara();
+        if (listType !== 'ul') { closeList(); out.push('<ul>'); listType = 'ul'; }
+        out.push('<li>' + ul[1] + '</li>');
+        continue;
+      }
+      var ol = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+      if (ol) {
+        flushPara();
+        if (listType !== 'ol') { closeList(); out.push('<ol>'); listType = 'ol'; }
+        out.push('<li>' + ol[1] + '</li>');
+        continue;
+      }
+      var bq = /^&gt;\s?(.*)$/.exec(line);
+      if (bq) { flushPara(); closeList(); out.push('<blockquote>' + bq[1] + '</blockquote>'); continue; }
+      if (line.trim() === '') { flushPara(); closeList(); continue; }
+      para.push(line);
+    }
+    flushPara(); closeList();
+
+    var html = out.join('\n');
+    html = html.replace(/\u0000B(\d+)\u0000/g, function (m, n) {
+      return '<pre><code>' + escapeHtml(blocks[Number(n)] || '') + '</code></pre>';
+    });
+    return html;
+  }
+
+  function nearBottom() {
+    return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 130;
+  }
+  function scrollToEnd(force) {
+    if (force || nearBottom()) messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  var toastTimer = null;
+  function toast(text) {
+    var el = $('toast');
+    el.textContent = text;
+    el.className = 'toast show';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.className = 'toast'; }, 2600);
+  }
+
+  function ready() { return !!(state.backend || state.key); }
+
+  function persist() {
+    try {
+      var plain = [];
+      for (var i = 0; i < state.messages.length; i++) {
+        var m = state.messages[i];
+        if (m.role === 'user') {
+          plain.push({ role: 'user', text: m.text || '', imgCount: (m.images || []).length });
+        } else {
+          plain.push({ role: 'assistant', content: m.content || '', reasoning: m.reasoning || '', failed: !!m.failed });
+        }
+      }
+      localStorage.setItem(K_CHAT, JSON.stringify(plain.slice(-MAX_KEEP)));
+    } catch (e) { /* 存储不可用：只影响记忆，不影响对话 */ }
+  }
+
+  function refreshBar() {
+    dotEl.className = ready() ? 'dot ok' : 'dot';
+    var where = state.backend ? '家庭服务器' : (state.key ? '已就绪' : '还没设置');
+    subEl.textContent = where + ' · ' + state.model + (state.thinking ? ' · 深入思考' : '');
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (e) { /* 忽略 */ }
+      document.body.removeChild(ta);
+      resolve();
+    });
+  }
+
+  /* ---------- 消息渲染 ---------- */
+  function openLightbox(src) {
+    $('lightbox-img').src = src;
+    $('lightbox').hidden = false;
+  }
+
+  function makeMessageEl(msg) {
+    var wrap = document.createElement('div');
+    wrap.className = 'msg ' + (msg.role === 'user' ? 'user' : 'assistant');
+
+    var bubble = document.createElement('div');
+    bubble.className = 'bubble' + (msg.failed ? ' failed' : '');
+
+    if (msg.role === 'user') {
+      var pics = [];
+      var docs = [];
+      for (var a = 0; a < (msg.images || []).length; a++) {
+        if (msg.images[a].kind === 'image') pics.push(msg.images[a].dataUrl);
+        else docs.push(msg.images[a].name || '文件');
+      }
+      if (pics.length) {
+        var strip = document.createElement('div');
+        strip.className = 'msg-imgs';
+        for (var i = 0; i < pics.length; i++) {
+          (function (src) {
+            var im = document.createElement('img');
+            im.src = src;
+            im.alt = '图片';
+            im.addEventListener('click', function () { openLightbox(src); });
+            strip.appendChild(im);
+          })(pics[i]);
+        }
+        bubble.appendChild(strip);
+      }
+      var t = document.createElement('div');
+      t.textContent = msg.text || '';
+      if (!msg.text) t.style.display = 'none';
+      bubble.appendChild(t);
+      for (var d2 = 0; d2 < docs.length; d2++) {
+        var dn = document.createElement('div');
+        dn.className = 'msg-note';
+        dn.textContent = '📎 ' + docs[d2];
+        bubble.appendChild(dn);
+      }
+      if (!msg.images && msg.imgCount) {
+        var note = document.createElement('div');
+        note.className = 'msg-note';
+        note.textContent = '（这条当时带了 ' + msg.imgCount + ' 张图片，图片不会保存在手机上）';
+        bubble.appendChild(note);
+      }
+    } else {
+      bubble.innerHTML = renderMarkdown(msg.content || '');
+    }
+    wrap.appendChild(bubble);
+
+    var tools = document.createElement('div');
+    tools.className = 'msg-tools';
+    wrap.appendChild(tools);
+
+    msg._bubble = bubble;
+    msg._tools = tools;
+    if (msg.role === 'assistant') { paintAssistant(msg); ensureCopy(msg); }
+    return wrap;
+  }
+
+  function paintAssistant(msg) {
+    if (!msg._bubble) return;
+    var html = '';
+    if (msg.reasoning) {
+      html += '<details class="reasoning"' + (busy ? ' open' : '') + '><summary>思考过程</summary><div class="body">'
+        + escapeHtml(msg.reasoning) + '</div></details>';
+    }
+    html += renderMarkdown(msg.content || '');
+    if (busy && msg === state.messages[state.messages.length - 1]) html += '<span class="cursor"></span>';
+    msg._bubble.innerHTML = html;
+    msg._bubble.className = 'bubble' + (msg.failed ? ' failed' : '');
+  }
+
+  function ensureCopy(msg) {
+    if (!msg._tools || msg._tools.querySelector('button') || !msg.content) return;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = '复制';
+    btn.addEventListener('click', function () {
+      copyText(msg.content).then(function () {
+        btn.textContent = '已复制';
+        setTimeout(function () { btn.textContent = '复制'; }, 1500);
+      });
+    });
+    msg._tools.appendChild(btn);
+  }
+
+  var EXAMPLES = ['这上面写的什么？', '这个药一天吃几次？', '帮我写一段话', '帮我算一下'];
+
+  function renderAll() {
+    messagesEl.innerHTML = '';
+    if (state.messages.length === 0) {
+      var box = document.createElement('div');
+      box.className = 'empty';
+      box.innerHTML = '<h2>有什么想问的？</h2>'
+        + '<p>打字问，或者点下面的 📷 拍张照片给我看。<br>说明书、化验单、药盒、路牌都可以。</p>';
+      var chips = document.createElement('div');
+      chips.className = 'chips';
+      for (var i = 0; i < EXAMPLES.length; i++) {
+        (function (q) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'chip';
+          b.textContent = q;
+          b.addEventListener('click', function () { inputEl.value = q; autosize(); inputEl.focus(); });
+          chips.appendChild(b);
+        })(EXAMPLES[i]);
+      }
+      box.appendChild(chips);
+      messagesEl.appendChild(box);
+      return;
+    }
+    for (var j = 0; j < state.messages.length; j++) {
+      messagesEl.appendChild(makeMessageEl(state.messages[j]));
+    }
+    scrollToEnd(true);
+  }
+
+  /* ---------- 附件处理 ---------- */
+  function renderAttachments() {
+    attsEl.innerHTML = '';
+    if (attachments.length === 0) { attsEl.hidden = true; return; }
+    attsEl.hidden = false;
+    for (var i = 0; i < attachments.length; i++) {
+      (function (att, index) {
+        var box = document.createElement('div');
+        box.className = 'att';
+        if (att.kind === 'image') {
+          var im = document.createElement('img');
+          im.src = att.dataUrl;
+          im.alt = att.name;
+          box.appendChild(im);
+        } else {
+          var d = document.createElement('div');
+          d.className = 'doc';
+          d.textContent = att.name;
+          box.appendChild(d);
+        }
+        var x = document.createElement('button');
+        x.type = 'button';
+        x.textContent = '✕';
+        x.setAttribute('aria-label', '移除');
+        x.addEventListener('click', function () {
+          attachments.splice(index, 1);
+          renderAttachments();
+        });
+        box.appendChild(x);
+        attsEl.appendChild(box);
+      })(attachments[i], i);
+    }
+  }
+
+  function setProgress(text) {
+    if (!text) { progressEl.hidden = true; progressEl.textContent = ''; return; }
+    progressEl.hidden = false;
+    progressEl.textContent = text;
+  }
+
+  function loadImage(file) {
+    if (window.createImageBitmap) {
+      return createImageBitmap(file, { imageOrientation: 'from-image' }).catch(function () {
+        return createImageBitmap(file);
+      });
+    }
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('图片打不开')); };
+      img.src = url;
+    });
+  }
+
+  function toJpegDataUrl(bitmap) {
+    var w = bitmap.width;
+    var h = bitmap.height;
+    var scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(w, h));
+    var cw = Math.max(1, Math.round(w * scale));
+    var ch = Math.max(1, Math.round(h * scale));
+    var canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.drawImage(bitmap, 0, 0, cw, ch);
+    return canvas.toDataURL('image/jpeg', 0.82);
+  }
+
+  function loadPdfLib() {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if (pdfLibPromise) return pdfLibPromise;
+    var sources = [
+      'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js',
+      'https://unpkg.com/pdfjs-dist@3.11.174/legacy/build/pdf.min.js'
+    ];
+    pdfLibPromise = new Promise(function (resolve, reject) {
+      var i = 0;
+      function next() {
+        if (i >= sources.length) { reject(new Error('PDF 组件加载失败，请改用拍照')); return; }
+        var src = sources[i++];
+        var s = document.createElement('script');
+        s.src = src;
+        s.onload = function () {
+          if (window.pdfjsLib) {
+            var workerUrl = src.replace('pdf.min.js', 'pdf.worker.min.js');
+            fetch(workerUrl)
+              .then(function (r) { return r.text(); })
+              .then(function (code) {
+                window.pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
+                resolve(window.pdfjsLib);
+              })
+              .catch(function () { resolve(window.pdfjsLib); });
+          } else { next(); }
+        };
+        s.onerror = next;
+        document.head.appendChild(s);
+      }
+      next();
+    });
+    return pdfLibPromise;
+  }
+
+  function readZipEntry(bytes, wanted) {
+    var dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    var eocd = -1;
+    for (var i = bytes.length - 22; i >= 0 && i >= bytes.length - 66000; i--) {
+      if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error('不是有效的 docx 文件');
+    var count = dv.getUint16(eocd + 10, true);
+    var off = dv.getUint32(eocd + 16, true);
+    for (var n = 0; n < count; n++) {
+      if (dv.getUint32(off, true) !== 0x02014b50) break;
+      var method = dv.getUint16(off + 10, true);
+      var compSize = dv.getUint32(off + 20, true);
+      var nameLen = dv.getUint16(off + 28, true);
+      var extraLen = dv.getUint16(off + 30, true);
+      var commentLen = dv.getUint16(off + 32, true);
+      var localOff = dv.getUint32(off + 42, true);
+      var name = '';
+      for (var k = 0; k < nameLen; k++) name += String.fromCharCode(bytes[off + 46 + k]);
+      if (name === wanted) {
+        var lNameLen = dv.getUint16(localOff + 26, true);
+        var lExtraLen = dv.getUint16(localOff + 28, true);
+        var start = localOff + 30 + lNameLen + lExtraLen;
+        var data = bytes.subarray(start, start + compSize);
+        if (method === 0) return Promise.resolve(data);
+        if (method !== 8) throw new Error('这个 docx 用了不支持的压缩方式');
+        if (typeof DecompressionStream !== 'function') throw new Error('这台手机的浏览器太旧，读不了 docx，请改用拍照或截图');
+        var stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        return new Response(stream).arrayBuffer().then(function (buf) { return new Uint8Array(buf); });
+      }
+      off += 46 + nameLen + extraLen + commentLen;
+    }
+    throw new Error('docx 里找不到正文');
+  }
+
+  function xmlToText(xml) {
+    var t = xml.replace(/<w:tab\b[^>]*\/?>/g, '\t');
+    t = t.replace(/<w:br\b[^>]*\/?>/g, '\n');
+    t = t.replace(/<\/w:p>/g, '\n');
+    t = t.replace(/<[^>]+>/g, '');
+    t = t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+    t = t.replace(/\n{3,}/g, '\n\n');
+    return t.trim();
+  }
+
+  function isImageFile(file) {
+    if (file.type && file.type.indexOf('image/') === 0) return true;
+    return /\.(jpe?g|png|gif|webp|bmp|heic|heif)$/i.test(file.name || '');
+  }
+
+  function buildAttachments(file) {
+    var name = file.name || '文件';
+    if (isImageFile(file)) {
+      return loadImage(file).then(function (bitmap) {
+        var dataUrl = toJpegDataUrl(bitmap);
+        if (bitmap.close) bitmap.close();
+        return [{ kind: 'image', dataUrl: dataUrl, name: name }];
+      });
+    }
+    if (/\.pdf$/i.test(name) || file.type === 'application/pdf') {
+      return loadPdfLib().then(function (lib) {
+        setProgress('正在读 PDF…');
+        return file.arrayBuffer().then(function (buf) {
+          return lib.getDocument({ data: new Uint8Array(buf) }).promise;
+        }).then(function (doc) {
+          var pages = Math.min(doc.numPages, PDF_MAX_PAGES);
+          var out = [];
+          var chain = Promise.resolve();
+          var renderPage = function (p) {
+            return doc.getPage(p).then(function (page) {
+              setProgress('正在转换第 ' + p + ' / ' + pages + ' 页…');
+              var base = page.getViewport({ scale: 1 });
+              var scale = Math.min(3, IMAGE_MAX_SIDE / Math.max(base.width, base.height));
+              var vp = page.getViewport({ scale: Math.max(1, scale) });
+              var canvas = document.createElement('canvas');
+              canvas.width = Math.round(vp.width);
+              canvas.height = Math.round(vp.height);
+              var ctx = canvas.getContext('2d');
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              return page.render({ canvasContext: ctx, viewport: vp }).promise.then(function () {
+                out.push({ kind: 'image', dataUrl: canvas.toDataURL('image/jpeg', 0.8), name: name + ' 第' + p + '页' });
+              });
+            });
+          };
+          for (var p = 1; p <= pages; p++) {
+            chain = chain.then(renderPage.bind(null, p));
+          }
+          return chain.then(function () {
+            if (doc.numPages > pages) toast('这个 PDF 有 ' + doc.numPages + ' 页，先看了前 ' + pages + ' 页');
+            return out;
+          });
+        });
+      }).then(function (out) {
+        setProgress('');
+        return out;
+      });
+    }
+    if (/\.docx$/i.test(name)) {
+      return file.arrayBuffer().then(function (buf) {
+        setProgress('正在读 Word 文档…');
+        return readZipEntry(new Uint8Array(buf), 'word/document.xml');
+      }).then(function (bytes) {
+        setProgress('');
+        var text = xmlToText(new TextDecoder('utf-8').decode(bytes));
+        if (!text) throw new Error('这个 Word 文档里没有文字');
+        return [{ kind: 'text', text: text.slice(0, 120000), name: name }];
+      }).catch(function (err) {
+        setProgress('');
+        throw err;
+      });
+    }
+    if (file.size > 3 * 1024 * 1024) throw new Error('文件太大了，请挑一个小一点的');
+    return file.text().then(function (text) {
+      if (!text.trim()) throw new Error('这个文件是空的');
+      return [{ kind: 'text', text: text.slice(0, 120000), name: name }];
+    });
+  }
+
+  function acceptFiles(fileList) {
+    var files = Array.prototype.slice.call(fileList || []);
+    if (files.length === 0) return;
+    var chain = Promise.resolve();
+    files.forEach(function (file) {
+      chain = chain.then(function () {
+        if (attachments.length >= MAX_IMAGES + 2) { toast('附件太多了，先发一次吧'); return; }
+        return buildAttachments(file).then(function (list) {
+          for (var i = 0; i < list.length; i++) attachments.push(list[i]);
+          renderAttachments();
+        }).catch(function (err) {
+          toast((file.name || '文件') + '：' + (err && err.message ? err.message : '读不了'));
+        });
+      });
+    });
+    chain.then(function () { setProgress(''); });
+  }
+
+  /* ---------- 请求 ---------- */
+  function endpoint() {
+    if (state.backend) {
+      return { url: state.backend.replace(/\/+$/, '') + '/chat', headers: {} , needsKey: false };
+    }
+    return {
+      url: DEFAULT_BASE + '/chat/completions',
+      headers: { 'Authorization': 'Bearer ' + state.key },
+      needsKey: true
+    };
+  }
+
+  function userBlocks(msg) {
+    var texts = [];
+    if (msg.text) texts.push(msg.text);
+    var images = [];
+    for (var i = 0; i < (msg.images || []).length; i++) {
+      if (msg.images[i].kind === 'image') images.push(msg.images[i]);
+      else texts.push('【文件：' + msg.images[i].name + '】\n' + msg.images[i].text);
+    }
+    var joined = texts.join('\n\n');
+    if (images.length === 0) return joined;
+    var parts = [{ type: 'text', text: joined || '请看看这些图片。' }];
+    for (var j = 0; j < images.length; j++) {
+      parts.push({ type: 'image_url', image_url: { url: images[j].dataUrl } });
+    }
+    return parts;
+  }
+
+  function apiMessages() {
+    var out = [];
+    if (state.system.trim()) out.push({ role: 'system', content: state.system.trim() });
+    for (var i = 0; i < state.messages.length; i++) {
+      var m = state.messages[i];
+      if (m.role === 'user') {
+        var blocks = userBlocks(m);
+        if (blocks) out.push({ role: 'user', content: blocks });
+      } else if (m.content) {
+        out.push({ role: 'assistant', content: m.content });
+      }
+    }
+    return out;
+  }
+
+  function describeHttp(status, body) {
+    var detail = '';
+    try {
+      var j = JSON.parse(body);
+      detail = (j && j.error && j.error.message) || (j && j.message) || '';
+    } catch (e) {
+      detail = String(body || '').slice(0, 200);
+    }
+    if (status === 400) {
+      if (/model/i.test(detail)) return '模型名不对：' + detail;
+      return '这次没成功：' + (detail || '请求格式有问题');
+    }
+    if (status === 401 || status === 403) {
+      if (state.backend) return '家庭口令不对，请点 ⚙ 填一次。' + (detail ? '（' + detail + '）' : '');
+      return '钥匙不对或已失效，请点 ⚙ 重新填一次。' + (detail ? '（' + detail + '）' : '');
+    }
+    if (status === 402) return '余额不够了，请到 DeepSeek 平台充值。';
+    if (status === 413) return '图片太大了，换一张小一点的试试。';
+    if (status === 429) return '问得太快了，等十几秒再试。';
+    if (status >= 500) return '服务器那边出错了（' + status + '），过一会儿再试。';
+    return '出错了（' + status + '）' + (detail ? '：' + detail : '');
+  }
+
+  function setBusy(value) {
+    busy = value;
+    sendBtn.hidden = value;
+    stopBtn.hidden = !value;
+  }
+
+  function send(presetText) {
+    var text = (presetText !== undefined ? presetText : inputEl.value).trim();
+    var atts = attachments.slice();
+    if ((!text && atts.length === 0) || busy) return;
+    if (!ready()) { openSheet(); return; }
+
+    var userMsg = {
+      role: 'user',
+      text: text,
+      images: atts.map(function (a) { return a; })
+    };
+    var live = { role: 'assistant', content: '', reasoning: '' };
+    state.messages.push(userMsg);
+    state.messages.push(live);
+
+    attachments = [];
+    renderAttachments();
+
+    if (messagesEl.querySelector('.empty')) messagesEl.innerHTML = '';
+    messagesEl.appendChild(makeMessageEl(userMsg));
+    messagesEl.appendChild(makeMessageEl(live));
+    scrollToEnd(true);
+    persist();
+
+    setBusy(true);
+    controller = new AbortController();
+    var ep = endpoint();
+
+    var pending = false;
+    function paint() {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(function () {
+        pending = false;
+        paintAssistant(live);
+        scrollToEnd(false);
+      });
+    }
+
+    var body = { model: state.model, messages: apiMessages(), stream: true };
+    body.thinking = { type: state.thinking ? 'enabled' : 'disabled' };
+    var headers = { 'Content-Type': 'application/json' };
+    if (state.key && !state.backend) headers['Authorization'] = 'Bearer ' + state.key;
+    if (state.backend && state.code) headers['X-Family-Code'] = state.code;
+
+    fetch(ep.url, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(body),
+      signal: controller.signal
+    }).then(function (res) {
+      if (!res.ok) {
+        return res.text().then(function (t) { throw new Error(describeHttp(res.status, t)); });
+      }
+      if (!res.body || !res.body.getReader) {
+        return res.json().then(function (j) {
+          var ch = (j.choices && j.choices[0]) || {};
+          var m = ch.message || {};
+          live.content = m.content || '';
+          live.reasoning = m.reasoning_content || '';
+          paint();
+        });
+      }
+      var reader = res.body.getReader();
+      var decoder = new TextDecoder('utf-8');
+      var buffer = '';
+      function pump() {
+        return reader.read().then(function (r) {
+          if (r.done) return;
+          buffer += decoder.decode(r.value, { stream: true });
+          var idx;
+          while ((idx = buffer.indexOf('\n')) >= 0) {
+            var line = buffer.slice(0, idx).replace(/\r$/, '').trim();
+            buffer = buffer.slice(idx + 1);
+            if (line.indexOf('data:') !== 0) continue;
+            var payload = line.slice(5).trim();
+            if (payload === '[DONE]') continue;
+            var json;
+            try { json = JSON.parse(payload); } catch (e) { continue; }
+            var delta = (json.choices && json.choices[0] && json.choices[0].delta) || {};
+            if (delta.reasoning_content) live.reasoning += delta.reasoning_content;
+            if (delta.content) live.content += delta.content;
+          }
+          paint();
+          return pump();
+        });
+      }
+      return pump();
+    }).catch(function (err) {
+      if (err && err.name === 'AbortError') {
+        if (!live.content) live.content = '（已停止）';
+        return;
+      }
+      var message = err && err.message ? err.message : String(err);
+      if (err instanceof TypeError || /Failed to fetch|NetworkError|Load failed/i.test(message)) {
+        message = state.backend
+          ? '连不上家庭服务器。请检查设置里的地址，或者确认后端还在运行。'
+          : '连不上网。请检查手机的网络，或者稍后再试。';
+      }
+      live.content = (live.content ? live.content + '\n\n' : '') + '⚠️ ' + message;
+      live.failed = true;
+    }).then(function () {
+      controller = null;
+      setBusy(false);
+      paintAssistant(live);
+      ensureCopy(live);
+      scrollToEnd(false);
+      persist();
+    });
+  }
+
+  function autosize() {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 132) + 'px';
+  }
+
+  /* ---------- 设置 ---------- */
+  var mode = 'personal';
+  function setMode(next) {
+    mode = next;
+    $('mode-personal').className = next === 'personal' ? 'on' : '';
+    $('mode-family').className = next === 'family' ? 'on' : '';
+    $('box-personal').hidden = next !== 'personal';
+    $('box-family').hidden = next !== 'family';
+    $('mode-note').textContent = next === 'personal'
+      ? '每台手机各自填一把钥匙，适合自己用。'
+      : '家里共用一台后端，亲人打开就能用，不需要填任何东西。';
+  }
+
+  function openSheet() {
+    $('set-key').value = state.key;
+    $('set-backend').value = state.backend;
+    $('set-code').value = state.code;
+    $('set-model').value = state.model;
+    $('set-sys').value = state.system;
+    $('set-thinking').checked = state.thinking;
+    setMode(state.backend ? 'family' : 'personal');
+    sheetEl.hidden = false;
+    if (ready()) queryBalance();
+  }
+  function closeSheet() { sheetEl.hidden = true; }
+
+  function saveSettings() {
+    state.key = $('set-key').value.trim();
+    state.backend = $('set-backend').value.trim().replace(/\/+$/, '');
+    state.code = $('set-code').value.trim();
+    state.model = $('set-model').value;
+    state.system = $('set-sys').value;
+    state.thinking = $('set-thinking').checked;
+    localStorage.setItem(K_KEY, state.key);
+    localStorage.setItem(K_BACKEND, state.backend);
+    localStorage.setItem(K_CODE, state.code);
+    localStorage.setItem(K_MODEL, state.model);
+    localStorage.setItem(K_SYS, state.system);
+    localStorage.setItem(K_THINK, state.thinking ? '1' : '0');
+    refreshBar();
+    closeSheet();
+    if (!ready()) { openSheet(); toast('还需要填一样：钥匙或家庭服务器地址'); return; }
+    toast('设置好了，可以用了');
+  }
+
+  /* ---------- 事件 ---------- */
+  composerEl.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (busy) return;
+    if (!inputEl.value.trim() && attachments.length === 0) return;
+    if (!ready()) { openSheet(); return; }
+    var text = inputEl.value;
+    inputEl.value = '';
+    autosize();
+    send(text);
+  });
+
+  stopBtn.addEventListener('click', function () { if (controller) controller.abort(); });
+
+  $('btn-new').addEventListener('click', function () {
+    if (busy) return;
+    if (state.messages.length && !confirm('开始新的对话？现在的内容会被清空。')) return;
+    state.messages = [];
+    localStorage.removeItem(K_CHAT);
+    renderAll();
+  });
+
+  $('btn-settings').addEventListener('click', openSheet);
+  $('set-close').addEventListener('click', closeSheet);
+  $('set-save').addEventListener('click', saveSettings);
+
+  /* 用输入框里当前的值发一个小请求，先确认地址/钥匙是对的，再谈聊天。 */
+  function testConnection() {
+    var btn = $('set-test');
+    var backend = $('set-backend').value.trim().replace(/\/+$/, '');
+    var key = $('set-key').value.trim();
+    var code = $('set-code').value.trim();
+    var model = $('set-model').value;
+    if (!backend && !key) { toast('先填钥匙，或者填家庭服务器地址'); return; }
+
+    var url = backend ? backend + '/chat' : (DEFAULT_BASE + '/chat/completions');
+    var headers = { 'Content-Type': 'application/json' };
+    if (backend) { if (code) headers['X-Family-Code'] = code; }
+    else headers['Authorization'] = 'Bearer ' + key;
+
+    btn.disabled = true;
+    btn.textContent = '测试中…';
+    fetch(url, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: 'user', content: '你好' }],
+        stream: false,
+        thinking: { type: 'disabled' }
+      })
+    }).then(function (res) {
+      return res.text().then(function (t) {
+        if (res.ok) {
+          var reply = '';
+          try {
+            var j = JSON.parse(t);
+            reply = ((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '').slice(0, 30);
+          } catch (e) { /* 有响应就够了 */ }
+          toast('连接成功，可以用了' + (reply ? '：' + reply : ''));
+        } else {
+          toast(describeHttp(res.status, t));
+        }
+      });
+    }).catch(function () {
+      toast(backend
+        ? '连不上这个地址。检查有没有写错、后端是不是在运行。'
+        : '连不上网，检查手机网络后再试。');
+    }).then(function () {
+      btn.disabled = false;
+      btn.textContent = '测试连接';
+    });
+  }
+  $('set-test').addEventListener('click', testConnection);
+
+  /* 查账户余额：走后端时不暴露钥匙，走自己的钥匙时直接问 DeepSeek。 */
+  function queryBalance() {
+    var btn = $('btn-balance');
+    var txt = $('balance-text');
+    var backend = $('set-backend').value.trim().replace(/\/+$/, '');
+    var key = $('set-key').value.trim();
+    var code = $('set-code').value.trim();
+    if (!backend && !key) { txt.textContent = '先填钥匙，或者填家庭服务器地址'; return; }
+
+    var url = backend ? backend + '/balance' : (DEFAULT_BASE + '/user/balance');
+    var headers = {};
+    if (backend) { if (code) headers['X-Family-Code'] = code; }
+    else headers['Authorization'] = 'Bearer ' + key;
+
+    btn.disabled = true;
+    btn.textContent = '查询中…';
+    txt.textContent = '查询中…';
+    fetch(url, { headers: headers }).then(function (res) {
+      return res.text().then(function (t) {
+        if (!res.ok) { txt.textContent = '查不到：' + describeHttp(res.status, t); return; }
+        var j = JSON.parse(t);
+        var info = (j.balance_infos && j.balance_infos[0]) || {};
+        var sym = info.currency === 'USD' ? '$' : '¥';
+        txt.textContent = sym + (info.total_balance || '?')
+          + '（赠送 ' + sym + (info.granted_balance || '0')
+          + '，充值 ' + sym + (info.topped_up_balance || '0') + '）'
+          + (j.is_available ? '' : '  ← 余额不足');
+      });
+    }).catch(function () {
+      txt.textContent = backend ? '连不上家庭服务器' : '连不上网';
+    }).then(function () {
+      btn.disabled = false;
+      btn.textContent = '查询余额';
+    });
+  }
+  $('btn-balance').addEventListener('click', queryBalance);
+  $('mode-personal').addEventListener('click', function () { setMode('personal'); });
+  $('mode-family').addEventListener('click', function () { setMode('family'); });
+  $('set-clear').addEventListener('click', function () {
+    if (!confirm('清除这台手机上保存的钥匙和聊天记录？')) return;
+    [K_KEY, K_BACKEND, K_CODE, K_MODEL, K_SYS, K_THINK, K_CHAT].forEach(function (k) { localStorage.removeItem(k); });
+    state.key = '';
+    state.backend = DEFAULT_BACKEND;
+    state.code = '';
+    state.model = DEFAULT_MODEL;
+    state.system = '';
+    state.thinking = true;
+    state.messages = [];
+    refreshBar();
+    renderAll();
+    closeSheet();
+  });
+  sheetEl.addEventListener('click', function (e) { if (e.target === sheetEl) closeSheet(); });
+
+  $('btn-camera').addEventListener('click', function () { $('pick-camera').click(); });
+  $('btn-file').addEventListener('click', function () { $('pick-file').click(); });
+  $('pick-camera').addEventListener('change', function (e) { acceptFiles(e.target.files); e.target.value = ''; });
+  $('pick-file').addEventListener('change', function (e) { acceptFiles(e.target.files); e.target.value = ''; });
+
+  inputEl.addEventListener('input', autosize);
+  inputEl.addEventListener('paste', function (e) {
+    var items = e.clipboardData && e.clipboardData.files;
+    if (items && items.length) { e.preventDefault(); acceptFiles(items); }
+  });
+  inputEl.addEventListener('compositionstart', function () { composing = true; });
+  inputEl.addEventListener('compositionend', function () { composing = false; });
+  inputEl.addEventListener('keydown', function (e) {
+    var coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    if (e.key === 'Enter' && !e.shiftKey && !composing && !coarse) {
+      e.preventDefault();
+      if (composerEl.requestSubmit) composerEl.requestSubmit();
+    }
+  });
+
+  $('lightbox').addEventListener('click', function () { $('lightbox').hidden = true; });
+  $('install-close').addEventListener('click', function () {
+    localStorage.setItem(K_HINT, '1');
+    $('install-hint').hidden = true;
+  });
+
+  /* ---------- 启动 ---------- */
+  /* 激活链接：口令放在 # 后面。井号后面的内容浏览器不会发给服务器，
+     也不会留在网页源码里，所以口令不会出现在任何公开的地方。 */
+  var hash = location.hash || '';
+  if (hash.indexOf('#c=') === 0) {
+    var incoming = '';
+    try { incoming = decodeURIComponent(hash.slice(3)).trim(); } catch (e) { incoming = hash.slice(3).trim(); }
+    if (incoming) {
+      state.code = incoming;
+      localStorage.setItem(K_CODE, incoming);
+      if (history.replaceState) history.replaceState(null, '', location.pathname + location.search);
+      toast('这台手机已经开通，直接问就行');
+    }
+  }
+
+  var params = new URLSearchParams(location.search);
+  if (params.get('action') === 'camera') {
+    setTimeout(function () { $('pick-camera').click(); }, 400);
+  }
+
+  var standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+  var isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if (!standalone && !localStorage.getItem(K_HINT) && (isIos || /Android/i.test(navigator.userAgent))) {
+    $('install-hint').hidden = false;
+  }
+
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('./sw.js').catch(function () { /* 离线缓存失败不影响使用 */ });
+  }
+
+  refreshBar();
+  renderAll();
+  if (!ready()) openSheet();
+  else if (state.backend && BACKEND_NEEDS_CODE && !state.code) openSheet();
+})();
+</script>
+</body>
+</html>

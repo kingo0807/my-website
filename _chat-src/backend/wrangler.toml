@@ -1,0 +1,8 @@
+name = "family-assistant"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+# 绑定到你自己的子域名（域名已经在 Cloudflare，所以不用迁 DNS）
+[[routes]]
+pattern = "api.wangyuyue.xyz"
+custom_domain = true

@@ -1,0 +1,10 @@
+{
+  "name": "family-assistant-backend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "家庭 AI 助手后端：转发到 DeepSeek 并在服务器端补上 API Key",
+  "dependencies": {
+    "wrangler": "^4.131.2"
+  }
+}
