@@ -185,6 +185,13 @@
   }
   .field textarea { resize: vertical; }
   .field .note { font-size: 12.5px; color: var(--muted); margin: 7px 0 0; line-height: 1.65; }
+  .balance-row { display: flex; align-items: center; gap: 10px; }
+  .balance-row span { flex: 1; min-width: 0; font-size: 15px; line-height: 1.5; }
+  .balance-row button {
+    flex: none; padding: 8px 14px; border-radius: 10px; font-size: 14px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  }
+  .balance-row button:disabled { opacity: .6; }
   .seg { display: flex; gap: 8px; }
   .seg button {
     flex: 1; padding: 11px 8px; border-radius: 11px; font-size: 14px; cursor: pointer;
@@ -285,6 +292,15 @@
         <label for="set-code">家庭口令（如果后端要求）</label>
         <input id="set-code" type="password" placeholder="留空表示不需要" autocomplete="off">
       </div>
+    </div>
+
+    <div class="field">
+      <label>账户余额</label>
+      <div class="balance-row">
+        <span id="balance-text">还没查</span>
+        <button type="button" id="btn-balance">查询余额</button>
+      </div>
+      <p class="note">余额是账户级别的，所有人都共用这一份。不足时谁都问不了，记得及时充值。</p>
     </div>
 
     <details class="help">
@@ -1088,6 +1104,7 @@
     $('set-thinking').checked = state.thinking;
     setMode(state.backend ? 'family' : 'personal');
     sheetEl.hidden = false;
+    if (ready()) queryBalance();
   }
   function closeSheet() { sheetEl.hidden = true; }
 
@@ -1184,6 +1201,43 @@
     });
   }
   $('set-test').addEventListener('click', testConnection);
+
+  /* 查账户余额：走后端时不暴露钥匙，走自己的钥匙时直接问 DeepSeek。 */
+  function queryBalance() {
+    var btn = $('btn-balance');
+    var txt = $('balance-text');
+    var backend = $('set-backend').value.trim().replace(/\/+$/, '');
+    var key = $('set-key').value.trim();
+    var code = $('set-code').value.trim();
+    if (!backend && !key) { txt.textContent = '先填钥匙，或者填家庭服务器地址'; return; }
+
+    var url = backend ? backend + '/balance' : (DEFAULT_BASE + '/user/balance');
+    var headers = {};
+    if (backend) { if (code) headers['X-Family-Code'] = code; }
+    else headers['Authorization'] = 'Bearer ' + key;
+
+    btn.disabled = true;
+    btn.textContent = '查询中…';
+    txt.textContent = '查询中…';
+    fetch(url, { headers: headers }).then(function (res) {
+      return res.text().then(function (t) {
+        if (!res.ok) { txt.textContent = '查不到：' + describeHttp(res.status, t); return; }
+        var j = JSON.parse(t);
+        var info = (j.balance_infos && j.balance_infos[0]) || {};
+        var sym = info.currency === 'USD' ? '$' : '¥';
+        txt.textContent = sym + (info.total_balance || '?')
+          + '（赠送 ' + sym + (info.granted_balance || '0')
+          + '，充值 ' + sym + (info.topped_up_balance || '0') + '）'
+          + (j.is_available ? '' : '  ← 余额不足');
+      });
+    }).catch(function () {
+      txt.textContent = backend ? '连不上家庭服务器' : '连不上网';
+    }).then(function () {
+      btn.disabled = false;
+      btn.textContent = '查询余额';
+    });
+  }
+  $('btn-balance').addEventListener('click', queryBalance);
   $('mode-personal').addEventListener('click', function () { setMode('personal'); });
   $('mode-family').addEventListener('click', function () { setMode('family'); });
   $('set-clear').addEventListener('click', function () {
