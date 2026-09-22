@@ -240,6 +240,8 @@ Resolve-DnsName -Name www.wangyuyue.xyz -Type CNAME -Server 1.1.1.1 -DnsOnly
 
 前端代码会被访客下载到浏览器，因此任何密码、Token、API 密钥都不能直接写入网页文件。
 
+如果确实需要「隐藏密钥的接口」，又不想自建常驻服务器，见[《给静态网站加后端（无服务器函数）》](/guides/backend-serverless/)。
+
 ## 10. 日常维护清单
 
 - [ ] 在域名到期前续费，避免域名失效或被他人重新注册；

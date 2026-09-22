@@ -47,3 +47,16 @@
   - 做成 PWA：有图标、可添加到主屏幕、独立窗口打开，并带离线外壳缓存。
 - 上线地址：https://wangyuyue.xyz/chat/
 - 源码：chat/ 目录；本地测试脚本在 C:\Users\wyy\Documents\phone-ai（执行 node test-all.mjs，26 项自检）。
+
+### 2026-09-22 · 后端指南上线为第 4 篇（session-6008e45b-3f32-4f9a-aeae-d3211ecec4f4）
+
+- 需求：盘点这个网站还有哪些可以学的；选定先把「给静态网站加后端」搬上线。
+- 做法：把 `_chat-src/guide/backend-guide.md`（原第 24–32 节）整理成独立指南 `_guides/backend-serverless.md`，章节重编为 1–9，补 front matter（`order: 4`）与前置知识链接。
+- 变更：`_guides/domain-hosting.md` 第 9 节增加指向新指南的链接；新指南由 guides 集合自动出现在 /guides/ 目录页。
+- 上线地址：https://wangyuyue.xyz/guides/backend-serverless/
+- 待办（盘点时发现，尚未处理）：
+  - 没有 CI：`test-all.mjs` 要手动跑，上线靠手动 push；
+  - 站点缺 SEO 基础件：无 description / og:* / favicon / robots.txt / sitemap.xml / 404 页；
+  - `sw.js` 的 `CACHE` 版本号要手改，改了网页不升版本家人可能看旧页面；
+  - `_chat-src/backend-server.mjs`、`_chat-src/backend-worker.js` 与 `backend/` 下的文件逐字节相同，`deploy.mjs` 不同步它们；
+  - `gen-icons.mjs:4` 把 sharp 路径写死到 `C:/Users/wyy/deepseek-harness/node_modules/.pnpm/sharp@0.35.3...`。
