@@ -1,0 +1,25 @@
+---
+layout: article
+title: "页面不存在"
+description: "这个地址没有对应的页面，可以从下面的入口回到站内其他内容。"
+permalink: /404.html
+---
+
+# 404：这个地址没有对应的页面
+
+可能是链接抄错、页面改名，或者它本来就不存在。
+下面这些是站内现有的入口：
+
+- [回首页]({{ '/' | relative_url }})
+- [文章目录]({{ '/guides/' | relative_url }})
+- [手机助手]({{ '/chat/' | relative_url }})
+
+## 全部文章
+
+<ul class="guide_list">
+{% for guide in site.guides | sort: 'order' %}
+  <li>
+    <a href="{{ guide.url | relative_url }}">{{ guide.title | escape }}</a>
+  </li>
+{% endfor %}
+</ul>

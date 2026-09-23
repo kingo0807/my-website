@@ -1,0 +1,24 @@
+---
+layout: null
+sitemap: false
+---
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>{{ '/' | absolute_url | xml_escape }}</loc>
+  </url>
+  <url>
+    <loc>{{ '/guides/' | absolute_url | xml_escape }}</loc>
+  </url>
+{%- for guide in site.guides | sort: 'order' %}
+  <url>
+    <loc>{{ guide.url | absolute_url | xml_escape }}</loc>
+{%- if guide.date %}
+    <lastmod>{{ guide.date | date_to_xmlschema }}</lastmod>
+{%- endif %}
+  </url>
+{%- endfor %}
+  <url>
+    <loc>{{ '/chat/' | absolute_url | xml_escape }}</loc>
+  </url>
+</urlset>

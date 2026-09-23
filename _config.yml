@@ -3,6 +3,9 @@ lang: zh-CN
 url: "https://wangyuyue.xyz"
 baseurl: ""
 
+description: "kingo 的个人网站：记录项目、技术笔记与学习过程。"
+author: kingo
+
 markdown: kramdown
 
 kramdown:
