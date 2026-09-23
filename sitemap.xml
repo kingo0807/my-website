@@ -10,7 +10,8 @@ sitemap: false
   <url>
     <loc>{{ '/guides/' | absolute_url | xml_escape }}</loc>
   </url>
-{%- for guide in site.guides | sort: 'guide_order' %}
+{%- assign ordered_guides = site.guides | sort: 'guide_order' -%}
+{%- for guide in ordered_guides %}
   <url>
     <loc>{{ guide.url | absolute_url | xml_escape }}</loc>
 {%- if guide.date %}
