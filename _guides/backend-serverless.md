@@ -3,7 +3,7 @@ layout: article
 title: "给静态网站加后端（无服务器函数）"
 date: 2026-09-22
 description: "CORS、HTTPS、Cloudflare Worker 部署、密钥管理与验证清单：给静态网站加一个能保密的接口。"
-order: 4
+guide_order: 4
 ---
 
 # 给静态网站加后端（无服务器函数）

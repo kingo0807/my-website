@@ -3,7 +3,7 @@ layout: article
 title: "域名、网站上线与 Ubuntu 服务器指南"
 date: 2026-09-03
 description: "域名解析、网站上线与 Ubuntu 服务器操作指南。"
-order: 3
+guide_order: 3
 ---
 
 # 域名、网站上线与 Ubuntu 服务器实操指南

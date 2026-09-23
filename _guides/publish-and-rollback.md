@@ -3,7 +3,7 @@ layout: article
 title: "发布与回滚：一次改动怎样才算真的上线"
 date: 2026-09-23
 description: "产物、自检、Pages 构建、浏览器缓存四层关卡，以及出问题时从哪一层退回去。"
-order: 5
+guide_order: 5
 ---
 
 # 发布与回滚：一次改动怎样才算真的上线
@@ -114,7 +114,7 @@ node test-all.mjs      # 通过 26 项，失败 0 项
 Pages 是"分支发布"模式：`main` 分支、根目录、由 Jekyll 构建。所以 push 完成时，真正的构建才刚开始。
 
 - **构建结果不在 `git push` 的输出里**。push 成功只代表代码到了 GitHub；构建在仓库的 Actions 页，工作流通常叫 `pages build and deployment`。**"push 成功但线上没变"十有八九是这一步失败了**，这时别去改 DNS。
-- 新增一篇指南不需要碰任何配置：在 `_guides/` 放一个带 front matter 的 `.md`（`layout: article`、`title`、`description`、`order`），它就会自动出现在 `/guides/` 目录页，`order` 决定排序。
+- 新增一篇指南不需要碰任何配置：在 `_guides/` 放一个带 front matter 的 `.md`（`layout: article`、`title`、`description`、`guide_order`），它就会自动出现在 `/guides/` 目录页，`guide_order` 决定排序。
 - **不要对 `main` 强推**：历史一改，发布记录跟着乱。改写历史的判断方式见[《Git 笔记》](/guides/git/)第三部分。
 
 ## 5. 第四层：浏览器缓存（最容易骗人的一层）
@@ -217,7 +217,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://api.wangyuyue.xyz/balance
 | 线上 404，本地正常 | `_` 开头目录不会被 Jekyll 发布 / 文件名大小写 / 相对路径 |
 | `node deploy.mjs` 打印 `!! 缺少 xxx` | 第 1 层：源目录真的少了文件 |
 | 接口 500「后端还没有配置 DEEPSEEK_API_KEY」 | 密钥层，不是代码层 |
-| 新指南没出现在目录里 | front matter：`layout: article` 和 `order` 有没有写 |
+| 新指南没出现在目录里 | front matter：`layout: article` 和 `guide_order` 有没有写 |
 
 ## 10. 一条最小发布流程
 
