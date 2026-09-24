@@ -14,7 +14,6 @@
     { "src": "./icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
-    { "name": "拍张照片问", "short_name": "拍照", "url": "./?action=camera" },
-    { "name": "说句话问", "short_name": "说话", "url": "./?action=mic" }
+    { "name": "拍张照片问", "short_name": "拍照", "url": "./?action=camera" }
   ]
 }

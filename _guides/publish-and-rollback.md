@@ -130,7 +130,7 @@ Pages 是"分支发布"模式：`main` 分支、根目录、由 Jekyll 构建。
 `chat/sw.js` 只做一件事：缓存应用外壳，让手机断网也能打开。它的策略可以直接读出来：
 
 ```js
-var CACHE = 'family-assistant-v2';
+var CACHE = 'family-assistant-v3';
 var SHELL = ['./', './index.html', './manifest.json', './icon-192.png', /* ... */];
 ```
 
@@ -154,7 +154,7 @@ var SHELL = ['./', './index.html', './manifest.json', './icon-192.png', /* ... *
 
 ```text
 F12 → Application → Service Workers   看当前运行的是不是新的
-F12 → Application → Cache Storage     看 family-assistant-v2 里存了哪些文件
+F12 → Application → Cache Storage     看 family-assistant-v3 里存了哪些文件
 ```
 
 手机上还可以"把主屏幕图标删掉重新添加"，这等于清掉这个应用的独立缓存。

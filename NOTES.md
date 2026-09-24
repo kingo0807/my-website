@@ -102,3 +102,13 @@
   - 用 `wrangler dev --port 8799 --var DEEPSEEK_API_KEY:sk-test --var DAILY_LIMIT:2` 在本地实测额度：连打三次 `/chat`，前两次 401（上游拒绝了假钥匙）且响应头 `X-Quota-Remaining` 依次为 1、0，第三次 429。**说明 Cache API 记账确实生效、没有静默失败。**
 - 新踩到的坑：本轮最后一次 push（含站点内容改动）之后，GitHub Pages **没有自动触发构建**——Actions 里只有新加的 CI 工作流，`pages build and deployment` 没有新记录，线上仍是上一版。用 `gh api -X POST repos/kingo0807/my-website/pages/builds` 手动排队后立刻恢复（`status=built`、`commit` 跟上）。这条已写进《发布与回滚》第 3 节。
 - 结论：以后 push 完要**打开具体页面**确认内容变了，不能只看 push 输出或 Actions 列表里有没有 CI。
+
+### 2026-09-24 · 手机助手：撤掉语音输入与朗读（session-a334fcba-75a1-4d39-a7d5-939c9ebb5b0e）
+
+- 起因：用户在华为手机（`com.huawei.hmos.brows`）上反馈「有麦克风权限但语音没法用，朗读也没法用」。
+- 排查结论：华为浏览器把 `webkitSpeechRecognition` 接口暴露出来，但调用时一律返回 `not-allowed`。用 `getUserMedia` 预检可以证明**麦克风本身没问题**（预检成功），卡住的是浏览器自己的语音识别服务——网页里无解。朗读一侧则是部分手机没有中文语音包（`speechSynthesis.getVoices()` 为空）。
+- 中途做过的加固（现已随功能一起删除，但知识留下）：
+  - 朗读要等 `voiceschanged`、优先挑中文语音；`cancel()` 之后**立刻** `speak()` 在 Chrome/Android 上会被吞掉，要隔 150ms；失败要显式报错而不是静默。
+  - 语音识别应先用 `getUserMedia` 真取一次麦克风，把「权限被拒」和「识别服务被拒」区分开，否则提示会指错方向。
+- 决定与结果：用户要求直接删除语音功能。已删除：`btn-mic`、语音识别整块逻辑（错误码表 / askMic / startRecognition）、朗读整块（speak / stopSpeaking / zhVoice）、设置里的语音诊断面板、`.voice-report` 与 `.icon-btn.rec` 样式、`?action=mic` 深链、manifest 的「说话」快捷方式；输入框提示回到「打字或拍照问我」。`sw.js` 缓存升到 `family-assistant-v3`（manifest 变了，外壳要换）。自检 64 → 58 项，其中新增 5 项是「语音相关代码必须已移除」的断言。
+- 给用户的替代方案：点输入框，用**输入法自带的麦克风**说话（识别在输入法内完成，不依赖浏览器服务）；如果以后要做真正的网页语音输入，正确路径是「浏览器录音 → 后端 `/asr` → 第三方 ASR」，因为 Worker 跑在 Cloudflare 边缘（不在国内），能直连 OpenAI Whisper 一类的服务——需要单独申请 ASR key。
