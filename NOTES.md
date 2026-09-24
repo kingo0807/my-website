@@ -79,3 +79,18 @@
 - 上线地址：https://wangyuyue.xyz/guides/publish-and-rollback/
 - 环境备注：受限沙箱下 `git push` 会先后被 schannel（`SEC_E_NO_CREDENTIALS`）和凭据助手的命名管道（`Win32 error 5`）挡住，需要更宽权限才能推送与联网验证；同理，`curl` 直连也拿不到证书。
 - 仍未处理：没有 CI；站点缺 SEO 基础件；`CACHE` 版本号仍要手改；`gen-icons.mjs` 仍写死 sharp 路径。
+
+### 2026-09-23 · 盘点后分批落地：基础件、阅读体验、CI、手机助手增强（session-a334fcba-75a1-4d39-a7d5-939c9ebb5b0e）
+
+- 需求：先问「这个网站还能加什么」，拿到清单后要求「都做」。
+- 第一批（站点基础件）：新增 `assets/favicon.svg`、`robots.txt`、`sitemap.xml`、404 页；`_config.yml` 加 `description` / `author`；首页与 `_layouts/article.html` 补 description、canonical、`og:*`。
+- 过程中发现并修掉两个真问题：
+  - 404 页原写成 `404.html`，而 Jekyll 只对 `.md` 跑 Markdown 转换，正文被当纯文本输出 → 改成 `404.md` 并保留 `permalink: /404.html`。
+  - `{% for guide in site.guides | sort: 'order' %}` 在 GitHub Pages 上**不生效**，线上顺序退回 Jekyll 默认的"先日期、后路径"。先试把键名 `order` 改成 `guide_order`（无效），最终改成两步写法 `{% assign sorted = site.guides | sort: 'guide_order' %}` 才生效；目录页、`sitemap.xml`、404 三处模板同步。
+- 第二批（阅读体验）：新增 `assets/js/article.js`（本页目录、代码块复制、深色模式、阅读进度、回到顶部，全部渐进增强）；`assets/css/article.css` 改用 CSS 变量并支持跟随系统 + 手动切换深色。
+- 第三批（分享封面）：用本地 sharp 渲染 `assets/og-image.png`（1200×630，渲染脚本内联执行未留文件），`og:image` 与 `twitter:card=summary_large_image` 指向它。
+- 第四批（记录治理）：`_config.yml` 加 `exclude`，`NOTES.md` / `README.md` 不再发布（线上 `/NOTES.md` 由 200 变 404）；新增公开更新日志 `updates.md`（`/updates/`），首页与文章页导航加入口。
+- 第五批（CI 与版本节点）：新增 `_tools/check.mjs`（源/产物漂移、副本一致、模板 Liquid、指南 front matter、`_config.yml` 仍排除 NOTES 的回归、站内链接）与 `.github/workflows/ci.yml`；打 tag `site-2026-09-23`。
+- 第六批（手机助手）：多会话历史（`fa_sessions` / `fa_session_current`，最多 20 条，新建/切换/删除，老的单条 `fa_chat` 自动迁移）、语音输入（webkitSpeechRecognition）、回答朗读（speechSynthesis）、`sw.js` 缓存升到 `family-assistant-v2`、manifest 加「说话」快捷方式（`?action=mic`）；两种后端都加每日额度（Worker 用 Cache API 按机房计数、Node 版进程内存计数；`DAILY_LIMIT` 默认 200，0 表示不限，记账失败一律放行）。自检从 26 项扩到 47 项。
+- 核实过的机制：`{% for x in y | sort: 'k' %}` 与 `{% assign s = y | sort: 'k' %}` 在 GitHub Pages 上的行为差异（前者静默不排序）；`Get-Content` 默认按 GBK 读 UTF-8 文件会把中文读坏，做语法校验时要显式 `-Encoding UTF8`。
+- 仍待处理：Worker 的额度改动要 `npx wrangler deploy` 才生效（沙箱内无法联网执行）；额度按机房计数属"大致额度"，要精确得换 KV；文章页视觉效果需人工在浏览器确认；`gen-icons.mjs` 仍写死 sharp 绝对路径。
