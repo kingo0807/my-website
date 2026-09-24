@@ -6,6 +6,12 @@ baseurl: ""
 description: "kingo 的个人网站：记录项目、技术笔记与学习过程。"
 author: kingo
 
+# 这些文件只服务于开发过程，不发布到网站。
+exclude:
+  - NOTES.md
+  - README.md
+  - node_modules
+
 markdown: kramdown
 
 kramdown:

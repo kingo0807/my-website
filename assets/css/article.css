@@ -1,41 +1,221 @@
+/* 文章页样式：浅色为默认，深色跟随系统，也可以用页面右上角按钮手动切换。 */
+
+:root {
+  --bg: #ffffff;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --link: #0969da;
+  --border: #e5e7eb;
+  --surface: #f6f8fa;
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #16181d;
+    --text: #e6e8eb;
+    --muted: #9aa1ab;
+    --link: #6cb6ff;
+    --border: #333841;
+    --surface: #21242b;
+    --shadow: none;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #16181d;
+  --text: #e6e8eb;
+  --muted: #9aa1ab;
+  --link: #6cb6ff;
+  --border: #333841;
+  --surface: #21242b;
+  --shadow: none;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  color: #1f2937;
-  background: #ffffff;
+  color: var(--text);
+  background: var(--bg);
   font-family: system-ui, sans-serif;
   line-height: 1.75;
 }
 
 .site-header,
-.article {
-  width: min(960px, calc(100% - 32px));
+.article-layout {
+  width: min(1120px, calc(100% - 32px));
   margin: auto;
 }
 
 .site-header {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 20px;
-  padding: 24px 0;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.site-header a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.site-header a:hover {
+  text-decoration: underline;
+}
+
+.theme-toggle {
+  margin-left: auto;
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  border-color: var(--link);
+}
+
+/* 顶部阅读进度条 */
+.read-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  width: 0;
+  height: 3px;
+  background: var(--link);
+}
+
+.article-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 32px;
 }
 
 .article {
+  min-width: 0;
   padding: 32px 0 80px;
 }
 
+/* 窄屏不放目录；脚本没跑或标题太少时它是空的。 */
+.toc {
+  display: none;
+}
+
+.toc:not(:empty) {
+  font-size: 14px;
+}
+
+@media (min-width: 1040px) {
+  .article-layout {
+    grid-template-columns: minmax(0, 1fr) 230px;
+    gap: 48px;
+  }
+
+  .toc:not(:empty) {
+    display: block;
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    max-height: calc(100vh - 48px);
+    overflow: auto;
+    padding: 32px 0;
+  }
+}
+
+.toc-title {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.toc ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-left: 1px solid var(--border);
+}
+
+.toc li {
+  margin: 2px 0;
+}
+
+.toc a {
+  display: block;
+  margin-left: -1px;
+  padding: 4px 0 4px 12px;
+  color: var(--muted);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+}
+
+.toc a:hover {
+  color: var(--text);
+}
+
+.toc a.on {
+  color: var(--link);
+  border-left-color: var(--link);
+  font-weight: 600;
+}
+
+.toc-h3 a {
+  padding-left: 26px;
+  font-size: 13px;
+}
+
+.article h2,
+.article h3 {
+  scroll-margin-top: 16px;
+}
+
 pre {
+  position: relative;
   overflow-x: auto;
   padding: 16px;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #f6f8fa;
+  background: var(--surface);
 }
 
 code {
   font-family: Consolas, monospace;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+pre:hover .copy-btn,
+.copy-btn:focus-visible {
+  opacity: 1;
+}
+
+.copy-btn.done {
+  color: var(--link);
+  border-color: var(--link);
+  opacity: 1;
 }
 
 table {
@@ -48,7 +228,14 @@ table {
 th,
 td {
   padding: 8px 12px;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--border);
+}
+
+blockquote {
+  margin: 16px 0;
+  padding: 4px 16px;
+  color: var(--muted);
+  border-left: 3px solid var(--border);
 }
 
 img {
@@ -56,5 +243,31 @@ img {
 }
 
 a {
-  color: #0969da;
+  color: var(--link);
+}
+
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.to-top {
+  position: fixed;
+  right: 20px;
+  bottom: 24px;
+  z-index: 20;
+  width: 40px;
+  height: 40px;
+  font: inherit;
+  font-size: 18px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.to-top:hover {
+  border-color: var(--link);
 }
