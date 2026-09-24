@@ -219,6 +219,13 @@
   .help ol, .help ul { padding-left: 20px; line-height: 1.85; }
   .help p { line-height: 1.75; }
 
+  .voice-report {
+    margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; max-height: 34vh; overflow: auto;
+    white-space: pre-wrap; word-break: break-word; background: var(--code-bg);
+    border: 1px solid var(--border); color: var(--text);
+    font-family: Consolas, monospace; font-size: 12.5px; line-height: 1.6;
+  }
+
   .toast {
     position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%);
     background: rgba(17, 24, 39, .92); color: #fff; padding: 10px 16px;
@@ -370,6 +377,18 @@
         <li>复制 sk- 开头的那串，粘贴到上面的输入框。</li>
       </ol>
       <p>余额和用量都在同一个平台查看。建议单独建一个 Key 专供手机使用，丢了可以直接删掉。</p>
+    </details>
+
+    <details class="help">
+      <summary>语音输入 / 朗读不能用？点这里诊断</summary>
+      <p>这两个功能靠的是浏览器和手机自带的能力，不同设备差别很大。点「检查」会把这台手机的实际情况列出来，可以把结果截图发我。</p>
+      <div class="sheet-actions">
+        <button type="button" id="voice-check">检查</button>
+        <button type="button" id="voice-test" data-idle="试听一句">试听一句</button>
+      </div>
+      <pre class="voice-report" id="voice-report">还没检查</pre>
+      <p><b>识别失败怎么办：</b>先用<b>输入法自带的麦克风</b>说话，效果一样（识别是在浏览器厂商的服务器上做的，国内网络下 Chrome / Edge 常被挡）。</p>
+      <p><b>朗读没声音怎么办：</b>手机「设置 → 语音合成引擎 / 文字转语音」里装一个中文语音包。</p>
     </details>
   </div>
 </div>
@@ -801,28 +820,76 @@
 
   var speakingBtn = null;
 
+  function idleLabel(btn) {
+    return (btn && btn.getAttribute && btn.getAttribute('data-idle')) || '朗读';
+  }
+
+  function zhVoice() {
+    if (!window.speechSynthesis) return null;
+    var vs = window.speechSynthesis.getVoices() || [];
+    var i;
+    for (i = 0; i < vs.length; i++) {
+      if (/^zh/i.test(vs[i].lang) && /zh|chinese|中文|普通话|国语/i.test(vs[i].lang + ' ' + vs[i].name)) return vs[i];
+    }
+    for (i = 0; i < vs.length; i++) if (/^zh/i.test(vs[i].lang)) return vs[i];
+    return null;
+  }
+
   function stopSpeaking() {
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     if (speakingBtn) {
-      speakingBtn.textContent = '朗读';
+      speakingBtn.textContent = idleLabel(speakingBtn);
       speakingBtn = null;
     }
   }
 
-  /* 朗读回答：手机上用的系统语音，不走网络请求。 */
+  /* 朗读回答：用手机系统的语音合成，不走网络。
+     两个已知的坑：voices 列表要等 voiceschanged 才有；cancel() 之后立刻 speak()
+     在 Chrome / Android 上会被吞掉，所以要隔一小会儿再播。 */
   function speak(text, btn) {
-    if (!window.speechSynthesis) { toast('这台设备不支持朗读'); return; }
+    var synth = window.speechSynthesis;
+    if (!synth) { toast('这台设备的浏览器没有朗读功能'); return; }
     if (speakingBtn === btn) { stopSpeaking(); return; }
     stopSpeaking();
-    var u = new SpeechSynthesisUtterance(String(text).slice(0, 1500));
-    u.lang = 'zh-CN';
-    u.onend = function () {
-      if (speakingBtn === btn) { btn.textContent = '朗读'; speakingBtn = null; }
-    };
-    u.onerror = u.onend;
+
     speakingBtn = btn;
     btn.textContent = '停止';
-    window.speechSynthesis.speak(u);
+
+    var started = false;
+    var finish = function (note) {
+      if (speakingBtn === btn) { btn.textContent = idleLabel(btn); speakingBtn = null; }
+      if (note) toast(note);
+    };
+
+    var utter = function () {
+      var u = new SpeechSynthesisUtterance(String(text).slice(0, 1500));
+      var v = zhVoice();
+      if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'zh-CN'; }
+      u.onstart = function () { started = true; };
+      u.onend = function () { finish(); };
+      u.onerror = function (e) {
+        var code = (e && (e.error || e.name)) || '未知';
+        finish('朗读失败（' + code + '）：手机可能没装中文语音包');
+      };
+      try {
+        synth.speak(u);
+      } catch (err) {
+        finish('朗读失败：' + ((err && err.message) || err));
+        return;
+      }
+      /* 有些设备 speak() 既不报错也不出声，1.6 秒还没开始就把话说清楚。 */
+      window.setTimeout(function () {
+        if (!started && speakingBtn === btn) toast('还没出声：去手机「设置 → 语音合成引擎」装一个中文语音包');
+      }, 1600);
+    };
+
+    if (synth.speaking || synth.pending) {
+      synth.cancel();
+      window.setTimeout(utter, 150);
+    } else {
+      if (synth.paused && synth.resume) synth.resume();
+      utter();
+    }
   }
 
   function ensureCopy(msg) {
@@ -1592,36 +1659,144 @@
   var listening = false;
   var micBtn = $('btn-mic');
 
+  /* 浏览器给的错误码，翻译成人话。 */
+  var MIC_ERRORS = {
+    'not-allowed': '浏览器没给麦克风权限',
+    'service-not-allowed': '浏览器不允许使用它的语音识别服务',
+    'audio-capture': '没找到麦克风',
+    'network': '连不上浏览器的语音识别服务器',
+    'no-speech': '没听到声音',
+    'language-not-supported': '不支持中文识别'
+  };
+
+  /* 先用 getUserMedia 真去要一次麦克风。它成功、识别却仍报 not-allowed，
+     就说明卡在浏览器的识别服务上，而不是权限——提示才不会指错方向。 */
+  function askMic() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return Promise.resolve({ ok: true, reason: 'no-api' });
+    }
+    return navigator.mediaDevices.getUserMedia({ audio: true }).then(
+      function (stream) {
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        return { ok: true };
+      },
+      function (err) { return { ok: false, reason: (err && err.name) || '未知错误' }; }
+    );
+  }
+
+  function startRecognition() {
+    var base = inputEl.value.trim();
+    recognition = new SpeechRec();
+    recognition.lang = 'zh-CN';
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = function (e) {
+      var said = '';
+      for (var i = 0; i < e.results.length; i++) said += e.results[i][0].transcript;
+      inputEl.value = (base ? base + ' ' : '') + said;
+      autosize();
+    };
+    recognition.onerror = function (e) {
+      listening = false;
+      micBtn.classList.remove('rec');
+      var code = (e && e.error) || '未知';
+      if (code === 'aborted') return;
+      if (code === 'no-speech') { toast('没听到声音，再说一次试试'); return; }
+      if (code === 'network') {
+        toast('语音识别连不上服务器（network）：识别是在浏览器厂商的服务器上做的，国内网络常被挡。可以改用输入法自带的麦克风。');
+        return;
+      }
+      if (code === 'not-allowed' || code === 'service-not-allowed') {
+        toast('麦克风本身能用，是浏览器的语音识别服务被拒（' + code + '）。可以改用输入法自带的麦克风说话。');
+        return;
+      }
+      toast((MIC_ERRORS[code] || '识别失败') + '（' + code + '）');
+    };
+    recognition.onend = function () {
+      listening = false;
+      micBtn.classList.remove('rec');
+    };
+    try {
+      recognition.start();
+    } catch (err) {
+      micBtn.classList.remove('rec');
+      toast('启动识别失败：' + ((err && err.message) || err));
+      return;
+    }
+    listening = true;
+  }
+
   if (SpeechRec && micBtn) {
     micBtn.hidden = false;
     micBtn.addEventListener('click', function () {
       if (listening) { if (recognition) recognition.stop(); return; }
       if (busy) { toast('等它回答完再说话'); return; }
-      var base = inputEl.value.trim();
-      recognition = new SpeechRec();
-      recognition.lang = 'zh-CN';
-      recognition.interimResults = true;
-      recognition.continuous = false;
-      recognition.onresult = function (e) {
-        var said = '';
-        for (var i = 0; i < e.results.length; i++) said += e.results[i][0].transcript;
-        inputEl.value = (base ? base + ' ' : '') + said;
-        autosize();
-      };
-      recognition.onerror = function (e) {
-        listening = false;
-        micBtn.classList.remove('rec');
-        toast(e && e.error === 'not-allowed' ? '没有麦克风权限，请在浏览器里允许一下' : '没听清，再说一次试试');
-      };
-      recognition.onend = function () {
-        listening = false;
-        micBtn.classList.remove('rec');
-      };
-      try { recognition.start(); } catch (err) { toast('这台设备用不了语音输入'); return; }
-      listening = true;
       micBtn.classList.add('rec');
+      askMic().then(function (mic) {
+        if (mic.ok) { startRecognition(); return; }
+        micBtn.classList.remove('rec');
+        if (mic.reason === 'NotAllowedError') {
+          toast('麦克风被挡住了：点地址栏左边的锁 / 图标 → 权限 → 麦克风，改成「允许」');
+        } else if (mic.reason === 'NotFoundError' || mic.reason === 'DevicesNotFoundError') {
+          toast('这台设备没有可用的麦克风');
+        } else {
+          toast('拿不到麦克风：' + mic.reason);
+        }
+      });
     });
   }
+
+  /* ---------- 语音能力诊断 ---------- */
+  function speechReport() {
+    var el = $('voice-report');
+    if (!el) return;
+    var lines = [];
+    var render = function () { el.textContent = lines.join('\n'); };
+
+    lines.push('页面: ' + (window.isSecureContext ? 'HTTPS（安全上下文）' : '不是 HTTPS，语音功能会被浏览器禁用'));
+    lines.push('浏览器: ' + navigator.userAgent);
+    lines.push('语音识别 API: ' + (SpeechRec ? '有（' + (window.SpeechRecognition ? 'SpeechRecognition' : 'webkitSpeechRecognition') + '）' : '没有'));
+
+    var synth = window.speechSynthesis;
+    if (!synth) {
+      lines.push('朗读 API: 没有');
+    } else {
+      var vs = synth.getVoices() || [];
+      var zh = 0;
+      for (var i = 0; i < vs.length; i++) if (/^zh/i.test(vs[i].lang)) zh++;
+      lines.push('朗读 API: 有；可用语音 ' + vs.length + ' 个，其中中文 ' + zh + ' 个' + (vs.length ? '（例如 ' + vs[0].name + '）' : '；列表可能晚一点才加载，过几秒再点一次'));
+    }
+
+    lines.push('麦克风接口: ' + (navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? '有' : '没有'));
+    lines.push('正在试取麦克风…');
+    render();
+
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'microphone' }).then(function (st) {
+        lines.push('麦克风权限状态: ' + st.state + '（granted=已允许 / prompt=会询问 / denied=已拒绝）');
+        render();
+      }).catch(function () {
+        lines.push('麦克风权限状态: 这个浏览器查不到');
+        render();
+      });
+    }
+
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        lines.push('实际取用麦克风: 成功 —— 麦克风没问题，识别失败就是浏览器识别服务的事');
+        render();
+      }, function (err) {
+        lines.push('实际取用麦克风: 失败（' + ((err && err.name) || '未知') + '）');
+        render();
+      });
+    }
+  }
+  if ($('voice-check')) $('voice-check').addEventListener('click', speechReport);
+  if ($('voice-test')) $('voice-test').addEventListener('click', function () {
+    speak('这是试听。如果听不到声音，就是手机还没装中文语音包。', $('voice-test'));
+  });
 
   $('btn-camera').addEventListener('click', function () { $('pick-camera').click(); });
   $('btn-file').addEventListener('click', function () { $('pick-file').click(); });

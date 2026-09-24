@@ -153,6 +153,13 @@ check('语音输入按钮', html, ['id="btn-mic"']);
 check('语音识别接入', js, ['webkitSpeechRecognition']);
 check('朗读接入', js, ['speechSynthesis']);
 check('语音深链', js, ["params.get('action') === 'mic'"]);
+check('语音错误码映射', js, ['MIC_ERRORS', 'service-not-allowed', 'audio-capture']);
+check('麦克风预检', js, ['function askMic', 'getUserMedia']);
+check('区分权限与识别服务', js, ['是浏览器的语音识别服务被拒']);
+check('朗读挑选中文语音', js, ['function zhVoice', 'getVoices']);
+check('朗读取消后延时再播', js, ['setTimeout(utter, 150)']);
+check('朗读没声音时给提示', js, ['语音合成引擎']);
+check('设置里有语音诊断', html, ['id="voice-check"', 'id="voice-report"', 'id="voice-test"']);
 check('清理本机数据包含会话', js, ['K_SESSIONS, K_CURRENT']);
 
 // ---------- 6. 后端额度 ----------
