@@ -114,6 +114,14 @@ node test-all.mjs      # 通过 26 项，失败 0 项
 Pages 是"分支发布"模式：`main` 分支、根目录、由 Jekyll 构建。所以 push 完成时，真正的构建才刚开始。
 
 - **构建结果不在 `git push` 的输出里**。push 成功只代表代码到了 GitHub；构建在仓库的 Actions 页，工作流通常叫 `pages build and deployment`。**"push 成功但线上没变"十有八九是这一步失败了**，这时别去改 DNS。
+- **偶尔连构建都不会被触发**：Actions 里只有你自己的 CI 工作流，压根没有新的 `pages build and deployment` 记录，线上自然一动不动。这不是你的代码有问题，可以手动请求一次构建：
+
+  ```bash
+  gh api -X POST repos/<owner>/<repo>/pages/builds        # 排队一次构建
+  gh api repos/<owner>/<repo>/pages/builds/latest         # 看 status 和 commit
+  ```
+
+  2026-09-23 本站遇到过一次：一次包含站点内容改动的 push 之后，Pages 始终没有自动构建，线上还是上一版；用上面第一条命令触发后，`status` 变成 `built`、`commit` 也跟上了，站点随即更新。**所以"push 完看一眼线上"要落到具体页面上，而不是只看 push 的输出。**
 - 新增一篇指南不需要碰任何配置：在 `_guides/` 放一个带 front matter 的 `.md`（`layout: article`、`title`、`description`、`guide_order`），它就会自动出现在 `/guides/` 目录页，`guide_order` 决定排序。
 - **不要对 `main` 强推**：历史一改，发布记录跟着乱。改写历史的判断方式见[《Git 笔记》](/guides/git/)第三部分。
 

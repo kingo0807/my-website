@@ -94,3 +94,11 @@
 - 第六批（手机助手）：多会话历史（`fa_sessions` / `fa_session_current`，最多 20 条，新建/切换/删除，老的单条 `fa_chat` 自动迁移）、语音输入（webkitSpeechRecognition）、回答朗读（speechSynthesis）、`sw.js` 缓存升到 `family-assistant-v2`、manifest 加「说话」快捷方式（`?action=mic`）；两种后端都加每日额度（Worker 用 Cache API 按机房计数、Node 版进程内存计数；`DAILY_LIMIT` 默认 200，0 表示不限，记账失败一律放行）。自检从 26 项扩到 47 项。
 - 核实过的机制：`{% for x in y | sort: 'k' %}` 与 `{% assign s = y | sort: 'k' %}` 在 GitHub Pages 上的行为差异（前者静默不排序）；`Get-Content` 默认按 GBK 读 UTF-8 文件会把中文读坏，做语法校验时要显式 `-Encoding UTF8`。
 - 仍待处理：Worker 的额度改动要 `npx wrangler deploy` 才生效（沙箱内无法联网执行）；额度按机房计数属"大致额度"，要精确得换 KV；文章页视觉效果需人工在浏览器确认；`gen-icons.mjs` 仍写死 sharp 绝对路径。
+
+### 2026-09-23 · 本轮收尾：部署后端、补一条发布链路经验（session-a334fcba-75a1-4d39-a7d5-939c9ebb5b0e）
+
+- 权限变化后完成了原先做不了的两件事：
+  - `node _chat-src/backend/node_modules/wrangler/bin/wrangler.js deploy` 部署 Worker 成功（版本 `bc606c6c-5e35-4697-9467-7376c11fb5e2`，域名 `api.wangyuyue.xyz`）。注意 wrangler 包的 `bin` 里 `cf-wrangler.js` 只有 `dev|build` 两个子命令（Cloudflare 内部用的包装），真正能用的是 `bin/wrangler.js`。
+  - 用 `wrangler dev --port 8799 --var DEEPSEEK_API_KEY:sk-test --var DAILY_LIMIT:2` 在本地实测额度：连打三次 `/chat`，前两次 401（上游拒绝了假钥匙）且响应头 `X-Quota-Remaining` 依次为 1、0，第三次 429。**说明 Cache API 记账确实生效、没有静默失败。**
+- 新踩到的坑：本轮最后一次 push（含站点内容改动）之后，GitHub Pages **没有自动触发构建**——Actions 里只有新加的 CI 工作流，`pages build and deployment` 没有新记录，线上仍是上一版。用 `gh api -X POST repos/kingo0807/my-website/pages/builds` 手动排队后立刻恢复（`status=built`、`commit` 跟上）。这条已写进《发布与回滚》第 3 节。
+- 结论：以后 push 完要**打开具体页面**确认内容变了，不能只看 push 输出或 Actions 列表里有没有 CI。
