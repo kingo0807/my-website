@@ -159,6 +159,13 @@
   .send:disabled { background: #b9d3ff; }
   .stop { background: var(--code-bg); color: var(--text); border: 1px solid var(--border); }
 
+  /* 窄屏手机上三个图标按钮加发送键会把输入框挤到一行都放不下，这里把按钮收紧一点。 */
+  @media (max-width: 380px) {
+    .composer { gap: 5px; padding-left: 8px; padding-right: 8px; }
+    .composer .icon-btn { width: 38px; height: 38px; font-size: 17px; }
+    .send, .stop { height: 38px; min-width: 54px; padding: 0 12px; }
+  }
+
   .install-hint {
     flex: none; display: flex; align-items: center; gap: 8px;
     padding: 9px 12px; background: #eaf2ff; color: #0b4aa2; font-size: 13px; line-height: 1.5;
@@ -271,7 +278,7 @@
     <button class="icon-btn" id="btn-camera" type="button" title="拍照" aria-label="拍照">📷</button>
     <button class="icon-btn" id="btn-file" type="button" title="传文件" aria-label="传文件">📎</button>
     <button class="icon-btn" id="btn-mic" type="button" title="语音输入" aria-label="语音输入" hidden>🎤</button>
-    <textarea id="input" rows="1" placeholder="打字、说话，或点 📷 拍照问我" enterkeyhint="send"></textarea>
+    <textarea id="input" rows="1" placeholder="打字或说话" enterkeyhint="send"></textarea>
     <button class="send" id="send" type="submit">发送</button>
     <button class="stop" id="stop" type="button" hidden>停止</button>
   </form>
@@ -481,6 +488,92 @@
     });
   }
 
+  /* ---------- LaTeX → 可读文本 ----------
+     家人在手机上看回答，KaTeX 那种排版又重又要外部依赖；这里只做「够看懂」的转换：
+     符号命令、分式、根号、上下标。正文里的反斜杠（比如 C:\Users）不动。 */
+  var LATEX_SYMBOLS = {
+    int: '∫', iint: '∬', iiint: '∭', oint: '∮', sum: 'Σ', prod: '∏',
+    infty: '∞', partial: '∂', nabla: '∇', pm: '±', mp: '∓', cdot: '·', cdots: '⋯', ldots: '…', dots: '…',
+    times: '×', div: '÷', ast: '∗', star: '⋆', circ: '∘', bullet: '•',
+    le: '≤', leq: '≤', ge: '≥', geq: '≥', ne: '≠', neq: '≠', equiv: '≡', approx: '≈', sim: '∼', propto: '∝',
+    to: '→', rightarrow: '→', leftarrow: '←', Rightarrow: '⇒', leftrightarrow: '↔', mapsto: '↦',
+    in: '∈', notin: '∉', subset: '⊂', subseteq: '⊆', supset: '⊃', cup: '∪', cap: '∩', emptyset: '∅', varnothing: '∅',
+    forall: '∀', exists: '∃', therefore: '∴', because: '∵', angle: '∠', perp: '⊥', parallel: '∥',
+    alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', varepsilon: 'ε', zeta: 'ζ', eta: 'η',
+    theta: 'θ', vartheta: 'ϑ', iota: 'ι', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', pi: 'π',
+    rho: 'ρ', sigma: 'σ', tau: 'τ', upsilon: 'υ', phi: 'φ', varphi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω',
+    Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Xi: 'Ξ', Pi: 'Π', Sigma: 'Σ', Phi: 'Φ', Psi: 'Ψ', Omega: 'Ω',
+    prime: '′', degree: '°', langle: '⟨', rangle: '⟩', lfloor: '⌊', rfloor: '⌋', lceil: '⌈', rceil: '⌉',
+    lim: 'lim', log: 'log', ln: 'ln', lg: 'lg', sin: 'sin', cos: 'cos', tan: 'tan', cot: 'cot',
+    exp: 'exp', max: 'max', min: 'min', det: 'det', gcd: 'gcd', mod: 'mod'
+  };
+  var SUP = {
+    '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+    '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
+    n: 'ⁿ', i: 'ⁱ', x: 'ˣ', y: 'ʸ', a: 'ᵃ', b: 'ᵇ', c: 'ᶜ', k: 'ᵏ', m: 'ᵐ', p: 'ᵖ', r: 'ʳ', s: 'ˢ', t: 'ᵗ'
+  };
+  var SUBT = {
+    '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄', '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
+    '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎',
+    a: 'ₐ', e: 'ₑ', h: 'ₕ', i: 'ᵢ', j: 'ⱼ', k: 'ₖ', l: 'ₗ', m: 'ₘ', n: 'ₙ', o: 'ₒ', p: 'ₚ', r: 'ᵣ', s: 'ₛ', t: 'ₜ', u: 'ᵤ', v: 'ᵥ', x: 'ₓ'
+  };
+
+  function toScript(body, map, mark) {
+    var text = String(body).trim();
+    if (!text) return '';
+    var out = '';
+    for (var i = 0; i < text.length; i++) {
+      var c = text.charAt(i);
+      if (map[c] === undefined) return mark + '(' + text + ')';
+      out += map[c];
+    }
+    return out;
+  }
+
+  function mathToText(tex) {
+    var s = String(tex);
+    for (var round = 0; round < 4; round++) {
+      s = s.replace(/\\(?:d|t)?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, '($1)/($2)');
+      s = s.replace(/\\sqrt\s*\[([^{}]*)\]\s*\{([^{}]*)\}/g, '($1)√($2)');
+      s = s.replace(/\\sqrt\s*\{([^{}]*)\}/g, '√($1)');
+      s = s.replace(/\\(?:text|mathrm|mathbf|mathit|mathsf|operatorname|mbox)\s*\{([^{}]*)\}/g, '$1');
+    }
+    /* 符号命令：只转换表里认识的命令，所以 C:\Users 这类路径不会被碰。
+       函数名（sin、log…）前面补空格，免得 r\cos\theta 粘成 rcosθ。
+       用 (?![a-zA-Z]) 而不是 \b：\int_0 里下划线也算词字符，\b 会不成立。 */
+    s = s.replace(/\\([a-zA-Z]+)(?![a-zA-Z])/g, function (m, name, offset, whole) {
+      var sym = LATEX_SYMBOLS[name];
+      if (sym === undefined) return m;
+      var before = offset > 0 ? whole.charAt(offset - 1) : '';
+      var isFunc = /^(log|ln|lg|sin|cos|tan|cot|sec|csc|exp|lim|max|min|det|gcd|mod)$/.test(name);
+      return (isFunc && /[A-Za-z0-9]/.test(before) ? ' ' : '') + sym;
+    });
+    s = s.replace(/\\(left|right|displaystyle|textstyle|limits|nolimits)\b/g, '');
+    s = s.replace(/\\[,;:! ]/g, ' ');
+    s = s.replace(/\\qquad\b|\\quad\b/g, '  ');
+    s = s.replace(/\\begin\{[^{}]*\}|\\end\{[^{}]*\}/g, '');
+    s = s.replace(/\\\\/g, '\n');
+    /* 上下标：先处理不带花括号的（e^{-x^2} 里那个 ^2），再处理带花括号的。
+       裸形式不收括号，这样回退出来的 ^(...) 不会被再转一次，整体是幂等的。 */
+    s = s.replace(/\^([0-9nixyabckmprst+\-=])/g, function (m, c) { return SUP[c]; });
+    s = s.replace(/\^\s*\{([^{}]*)\}/g, function (m, b) { return toScript(b, SUP, '^'); });
+    s = s.replace(/_([0-9nixyaehijklmnoprstuv+\-=])/g, function (m, c) { return SUBT[c]; });
+    s = s.replace(/_\s*\{([^{}]*)\}/g, function (m, b) { return toScript(b, SUBT, '_'); });
+    s = s.replace(/\$/g, '');
+    return s.replace(/[ \t]{2,}/g, ' ').trim();
+  }
+
+  function latexToText(src) {
+    return String(src)
+      .replace(/\\\[([\s\S]*?)\\\]/g, function (m, body) { return '\n' + mathToText(body) + '\n'; })
+      .replace(/\\\(([\s\S]*?)\\\)/g, function (m, body) { return mathToText(body); })
+      .replace(/\$\$([\s\S]*?)\$\$/g, function (m, body) { return '\n' + mathToText(body) + '\n'; })
+      .replace(/\$([^$\n]+)\$/g, function (m, body) { return mathToText(body); })
+      .split('\n')
+      .map(function (line) { return /\\[a-zA-Z]/.test(line) ? mathToText(line) : line; })
+      .join('\n');
+  }
+
   function renderMarkdown(src) {
     var blocks = [];
     var text = String(src).replace(/```([^\n]*)\n?([\s\S]*?)(?:```|$)/g, function (m, lang, code) {
@@ -488,6 +581,7 @@
       return '\u0000B' + (blocks.length - 1) + '\u0000';
     });
 
+    text = latexToText(text);
     text = escapeHtml(text);
     text = text.replace(/`([^`\n]+)`/g, '<code>$1</code>');
     text = text.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');

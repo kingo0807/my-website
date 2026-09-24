@@ -124,7 +124,20 @@ try {
   bad('损坏文件应当报错');
 } catch (err) { ok('损坏文件正确报错'); }
 
-// ---------- 5. 多会话 / 语音 / 朗读 ----------
+// ---------- 5. LaTeX → 可读文本 ----------
+console.log('== LaTeX 转可读文本 ==');
+check('行内公式', renderMarkdown('\\(I=\\int_0^\\infty e^{-x^2}dx\\)'), ['I=∫₀^∞', 'x²'], ['\\int', '\\infty', '\\(']);
+check('分式与根号', renderMarkdown('$\\frac{a}{b}$ 和 $\\sqrt{\\pi}$'), ['(a)/(b)', '√(π)'], ['\\frac', '\\sqrt']);
+check('块级求和的上下标', renderMarkdown('\\[\\sum_{i=1}^{n} i\\]'), ['Σᵢ₌₁ⁿ'], ['\\sum', '\\[']);
+check('希腊字母与不等号', renderMarkdown('\\(\\theta \\le \\pi\\)'), ['θ ≤ π'], []);
+check('没有定界符的命令也转', renderMarkdown('公式 \\frac{1}{2} 很简单'), ['(1)/(2)'], ['\\frac']);
+check('Windows 路径不被破坏', renderMarkdown('路径 C:\\Users\\wyy 和 \\times'), ['C:\\Users\\wyy', '×'], []);
+check('代码块里的 LaTeX 原样保留', renderMarkdown('```\n\\int_0^1 x dx\n```'), ['\\int_0^1'], []);
+check('命令后跟下划线也要转', renderMarkdown('\\(\\int_0^\\infty\\)'), ['∫₀^∞'], ['\\int']);
+check('函数名不粘连', renderMarkdown('\\(x=r\\cos\\theta\\)'), ['r cosθ'], ['\\cos']);
+check('转换是幂等的', renderMarkdown('\\(x^{2}\\)'), ['x²'], ['^(', '\\((']);
+
+// ---------- 6. 多会话 / 语音 / 朗读 ----------
 console.log('== 多会话与语音 ==');
 check('多会话存储键', js, ['fa_sessions']);
 check('当前会话键', js, ['fa_session_current']);
