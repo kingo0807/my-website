@@ -76,13 +76,13 @@ foreach ($f in @('index.html','manifest.json','sw.js','icon-180.png','icon-192.p
 
 判断标准：全部 `OK` 才能提交；出现 `<<< 漂移` 说明产物比源码旧、或者有人手改了产物，先跑 `node deploy.mjs` 再继续。
 
-> 2026-09-23 实测：这 7 个文件当前全部一致。
+> 2026-09-23 实测：这 7 个文件当前全部一致。这段检测已经固化成 `node _tools/check.mjs`，不用再手敲。
 
 ### 2.2 一个已知隐患：两份不受管的后端副本
 
 `_chat-src/backend-worker.js`、`_chat-src/backend-server.mjs` 与 `_chat-src/backend/worker.js`、`_chat-src/backend/server.mjs` **逐字节相同**，但 `deploy.mjs` 只管 `chat/` 那一组，**不管这四个文件**。
 
-也就是说：改后端时如果只改了一处，另外两份会悄悄变成旧版本，而上面那段哈希检测也查不出来（脚本里压根没列它们）。两条出路，选一条：
+也就是说：改后端时如果只改了一处，另一份会悄悄变成旧版本。**现在 `node _tools/check.mjs` 会把这两对副本做逐字节比较**，改漏一处 CI 直接变红——"有没有漂移"解决了，"到底该改哪一份"还没解决。两条出路，选一条：
 
 - 让同步脚本把这四份一起管起来（保留副本，但纳入同步）；
 - 或者删掉重复的两份，只留 `backend/` 下的正本，在 README 里指路过去。
@@ -95,7 +95,7 @@ foreach ($f in @('index.html','manifest.json','sw.js','icon-180.png','icon-192.p
 
 ```bash
 cd _chat-src
-node test-all.mjs      # 通过 26 项，失败 0 项
+node test-all.mjs      # 通过 47 项，失败 0 项
 ```
 
 它覆盖四类东西，这个分类比数字本身更值得记：
@@ -107,7 +107,7 @@ node test-all.mjs      # 通过 26 项，失败 0 项
 | 安全回归 | `<script>` 被转义、`onerror` 被转义、`javascript:` 链接失效 | 渲染函数改一次就可能漏一次 |
 | 纯逻辑 | 用真实 ZIP、真实 deflate 构造 docx 再解析 | 解析器不靠手工点，靠构造数据验 |
 
-失败时脚本会设 `process.exitCode = 1`——这才是它真正的价值：**任何自动化都能拿它当闸门**。现在它只能靠人记得跑，忘了跑就等于没有这层。
+失败时脚本会设 `process.exitCode = 1`——这才是它真正的价值：**任何自动化都能拿它当闸门**。2026-09-23 起，`.github/workflows/ci.yml` 每次 push 都会替你跑它和 `node _tools/check.mjs`，忘了跑也拦得住。
 
 ## 4. 第三层：提交与 Pages 构建
 
@@ -130,7 +130,7 @@ Pages 是"分支发布"模式：`main` 分支、根目录、由 Jekyll 构建。
 `chat/sw.js` 只做一件事：缓存应用外壳，让手机断网也能打开。它的策略可以直接读出来：
 
 ```js
-var CACHE = 'family-assistant-v1';
+var CACHE = 'family-assistant-v2';
 var SHELL = ['./', './index.html', './manifest.json', './icon-192.png', /* ... */];
 ```
 
@@ -154,7 +154,7 @@ var SHELL = ['./', './index.html', './manifest.json', './icon-192.png', /* ... *
 
 ```text
 F12 → Application → Service Workers   看当前运行的是不是新的
-F12 → Application → Cache Storage     看 family-assistant-v1 里存了哪些文件
+F12 → Application → Cache Storage     看 family-assistant-v2 里存了哪些文件
 ```
 
 手机上还可以"把主屏幕图标删掉重新添加"，这等于清掉这个应用的独立缓存。
@@ -233,7 +233,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://api.wangyuyue.xyz/balance
 
 - [ ] `node test-all.mjs` → 失败 0 项
 - [ ] `node deploy.mjs` → 没有 `!! 缺少`
-- [ ] 哈希检测 → 全部 `OK`
+- [ ] `node _tools/check.mjs` → 全部通过
 
 发布中：
 
@@ -243,7 +243,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://api.wangyuyue.xyz/balance
 
 发布后：
 
-- [ ] Actions 里 `pages build and deployment` 成功
+- [ ] Actions 里 `pages build and deployment` 成功（连新记录都没有时，手动 `gh api -X POST repos/<owner>/<repo>/pages/builds`）
 - [ ] 三个入口 `curl` 都是 200
 - [ ] 抽一个刚改过的字符串，确认内容真的换了
 - [ ] 后端 `/balance` 通
@@ -260,8 +260,8 @@ curl -s -o /dev/null -w "%{http_code}\n" https://api.wangyuyue.xyz/balance
 
 1. 发布不是"push 成功"，而是**四层全部到位**：产物、自检、构建、缓存；
 2. 发布脚本必须会报错——安静地少发一个文件，比报错危险得多；
-3. 自检的价值不在 26 这个数字，而在退出码：它能被自动化当闸门；
-4. `push` 成功 ≠ 上线成功，构建失败要去 Actions 看；
+3. 自检的价值不在 47 这个数字，而在退出码：它能被自动化当闸门；
+4. `push` 成功 ≠ 上线成功，构建失败要去 Actions 看，连构建都可能压根没被触发；
 5. 缓存优先的资源（图标、`manifest.json`）是"看到旧版本"的头号嫌疑；
 6. 已经下发的 Service Worker 收不回来，能做的只有"快速再发一版"；
 7. 回滚分四层；密钥不跟着代码回滚，泄露了就轮换；
