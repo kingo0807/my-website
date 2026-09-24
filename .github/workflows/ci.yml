@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 手机助手的 47 项自检：语法、模型名、Markdown/XSS 转义、docx 解析、多会话、语音、后端额度
+      - name: 手机助手自检
+        working-directory: _chat-src
+        run: node test-all.mjs
+
+      # 站点级检查：源与产物是否漂移、副本是否同步、模板 Liquid、站内链接
+      - name: 站点结构与链接检查
+        run: node _tools/check.mjs
