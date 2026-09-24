@@ -11,10 +11,36 @@
  * 需要配置的环境变量（用 wrangler secret put 设置，不要写在这个文件里）：
  *   DEEPSEEK_API_KEY  必填，sk- 开头的钥匙
  *   FAMILY_CODE       选填，设了就要求前端带同一个口令
+ *   DAILY_LIMIT       选填，每台设备每天最多问几次，默认 200，填 0 表示不限
  */
 
 const DEEPSEEK = 'https://api.deepseek.com';
 const ALLOWED_ORIGINS = ['https://wangyuyue.xyz', 'https://www.wangyuyue.xyz'];
+const DEFAULT_DAILY_LIMIT = 200;
+
+/* 每日额度：用 Workers 自带的 Cache API 记账，不需要额外配置。
+   注意：缓存按 Cloudflare 机房各自保存，所以这是"大致额度"而不是精确计数；
+   要收紧到全局口径，把这段换成 KV binding 即可，返回结构不用变。 */
+async function countToday(env, request) {
+  const limit = env.DAILY_LIMIT === undefined ? DEFAULT_DAILY_LIMIT : Number(env.DAILY_LIMIT);
+  if (!Number.isFinite(limit) || limit <= 0) return { limited: false, limit: 0, used: 0, remaining: 0 };
+  const day = new Date().toISOString().slice(0, 10);
+  const who = request.headers.get('cf-connecting-ip') || 'unknown';
+  const key = new Request('https://quota.internal/' + day + '/' + encodeURIComponent(who), { method: 'GET' });
+  let used = 0;
+  try {
+    const hit = await caches.default.match(key);
+    if (hit) used = Number(await hit.text()) || 0;
+    const next = used + 1;
+    await caches.default.put(key, new Response(String(next), {
+      headers: { 'cache-control': 'max-age=86400' },
+    }));
+    return { limited: next > limit, limit: limit, used: next, remaining: Math.max(0, limit - next) };
+  } catch (err) {
+    /* 记账失败不能把家里人挡在门外：放行。 */
+    return { limited: false, limit: limit, used: used, remaining: 0 };
+  }
+}
 
 export default {
   async fetch(request, env) {
@@ -25,6 +51,7 @@ export default {
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'content-type, x-family-code',
       'Access-Control-Max-Age': '86400',
+      'Access-Control-Expose-Headers': 'X-Quota-Remaining',
       'Vary': 'Origin',
     };
     const fail = (status, message) => new Response(JSON.stringify({ error: { message: message } }), {
@@ -42,6 +69,10 @@ export default {
     if (!env.DEEPSEEK_API_KEY) return fail(500, '后端还没有配置 DEEPSEEK_API_KEY');
 
     if (request.method === 'POST' && path === '/chat') {
+      const quota = await countToday(env, request);
+      if (quota.limited) {
+        return fail(429, '今天的用量到上限了（每天 ' + quota.limit + ' 次），明天再来吧');
+      }
       const upstream = await fetch(DEEPSEEK + '/chat/completions', {
         method: 'POST',
         headers: {
@@ -53,6 +84,7 @@ export default {
       const headers = new Headers(cors);
       headers.set('content-type', upstream.headers.get('content-type') || 'application/json');
       headers.set('cache-control', 'no-store');
+      if (quota.limit) headers.set('X-Quota-Remaining', String(quota.remaining));
       return new Response(upstream.body, { status: upstream.status, headers: headers });
     }
 

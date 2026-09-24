@@ -1,5 +1,5 @@
 /* 只缓存应用外壳，绝不缓存接口请求和跨域资源。 */
-var CACHE = 'family-assistant-v1';
+var CACHE = 'family-assistant-v2';
 var SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './icon-180.png', './icon-512-maskable.png'];
 
 self.addEventListener('install', function (e) {

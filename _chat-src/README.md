@@ -23,7 +23,7 @@ node deploy.mjs    # 把源码同步到 ../chat/（线上目录），然后自�
 ## 自检
 
 ```bash
-node test-all.mjs      # 26 项：语法、模型名、Markdown/XSS 转义、docx 解压
+node test-all.mjs      # 自检：语法、模型名、Markdown/XSS 转义、docx 解压、多会话、语音、后端额度
 ```
 
 ## 工具
@@ -39,7 +39,14 @@ node test-all.mjs      # 26 项：语法、模型名、Markdown/XSS 转义、doc
 见 `backend/`。线上跑的是 Cloudflare Worker（`backend/worker.js`）。
 **密钥不在这个目录里**，它存在 Cloudflare 的环境变量中。
 
-两个后端是同一套 API：`POST /chat` 与 `GET /balance`。
+两个后端是同一套 API：`POST /chat` 与 `GET /balance`，都带「每台设备每天问几次」的额度
+（环境变量 `DAILY_LIMIT`，默认 200，填 0 表示不限）：
+
+- Worker 版用 Cache API 记账，按 Cloudflare 机房各自计数，是**大致**额度、零配置；
+- Node 版用进程内存计数，重启清零。
+
+想换成 Cloudflare KV 做全局精确计数：把 `countToday()` 里的 `caches.default` 换成 KV 读写即可，
+调用方不用改。
 
 ```bash
 cd backend

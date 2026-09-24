@@ -124,6 +124,36 @@ try {
   bad('损坏文件应当报错');
 } catch (err) { ok('损坏文件正确报错'); }
 
+// ---------- 5. 多会话 / 语音 / 朗读 ----------
+console.log('== 多会话与语音 ==');
+check('多会话存储键', js, ['fa_sessions']);
+check('当前会话键', js, ['fa_session_current']);
+check('会话条数上限', js, ['MAX_SESSIONS']);
+check('会话标题生成', js, ['function titleOf']);
+check('切换会话', js, ['function switchSession']);
+check('删除会话', js, ['function removeSession']);
+check('新建会话', js, ['function newSession']);
+check('历史面板入口按钮', html, ['id="btn-history"']);
+check('历史面板列表容器', html, ['id="hist-list"']);
+check('切换会话时先落盘', js, ['persist();\n    current = target;']);
+check('语音输入按钮', html, ['id="btn-mic"']);
+check('语音识别接入', js, ['webkitSpeechRecognition']);
+check('朗读接入', js, ['speechSynthesis']);
+check('语音深链', js, ["params.get('action') === 'mic'"]);
+check('清理本机数据包含会话', js, ['K_SESSIONS, K_CURRENT']);
+
+// ---------- 6. 后端额度 ----------
+console.log('== 后端额度 ==');
+const worker = readFileSync('backend-worker.js', 'utf8');
+const serverCopy = readFileSync('backend/server.mjs', 'utf8');
+const serverFlat = readFileSync('backend-server.mjs', 'utf8');
+check('Worker 默认额度', worker, ['DEFAULT_DAILY_LIMIT = 200']);
+check('Worker 超额返回 429', worker, ['fail(429']);
+check('Worker 额度响应头', worker, ['X-Quota-Remaining']);
+check('Worker 记账失败时放行', worker, ['记账失败不能把家里人挡在门外']);
+check('Node 版也有额度', serverCopy, ['DAILY_LIMIT', 'fail(429']);
+check('两份 Node 版仍然逐字节相同', serverFlat, [serverCopy]);
+
 console.log('');
 console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项');
 process.exitCode = fail === 0 ? 0 : 1;

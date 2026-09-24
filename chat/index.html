@@ -226,6 +226,23 @@
   }
   .lightbox[hidden] { display: none; }
   .lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+  /* 历史对话 */
+  .hist-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; max-height: 46vh; overflow: auto; }
+  .hist-row { display: flex; align-items: stretch; gap: 6px; }
+  .hist-open {
+    flex: 1; min-width: 0; text-align: left; padding: 10px 12px; border-radius: 11px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  }
+  .hist-row.on .hist-open { border-color: var(--blue); }
+  .hist-title { display: block; font-size: 14.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hist-meta { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+  .hist-del {
+    flex: none; width: 40px; border-radius: 11px; cursor: pointer; font-size: 14px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--muted);
+  }
+  .hist-del:hover { color: var(--danger); border-color: var(--danger); }
+  .icon-btn.rec { background: rgba(212, 56, 13, .12); border-color: var(--danger); color: var(--danger); }
 </style>
 </head>
 <body>
@@ -235,6 +252,7 @@
       <div class="bar-title"><span class="dot" id="status-dot"></span>小助手</div>
       <div class="bar-sub" id="bar-sub">正在准备…</div>
     </div>
+    <button class="icon-btn" id="btn-history" title="历史对话" aria-label="历史对话">☰</button>
     <button class="icon-btn" id="btn-new" title="新对话" aria-label="新对话">＋</button>
     <button class="icon-btn" id="btn-settings" title="设置" aria-label="设置">⚙</button>
   </header>
@@ -252,7 +270,8 @@
   <form class="composer" id="composer" autocomplete="off">
     <button class="icon-btn" id="btn-camera" type="button" title="拍照" aria-label="拍照">📷</button>
     <button class="icon-btn" id="btn-file" type="button" title="传文件" aria-label="传文件">📎</button>
-    <textarea id="input" rows="1" placeholder="打字，或点 📷 拍照问我" enterkeyhint="send"></textarea>
+    <button class="icon-btn" id="btn-mic" type="button" title="语音输入" aria-label="语音输入" hidden>🎤</button>
+    <textarea id="input" rows="1" placeholder="打字、说话，或点 📷 拍照问我" enterkeyhint="send"></textarea>
     <button class="send" id="send" type="submit">发送</button>
     <button class="stop" id="stop" type="button" hidden>停止</button>
   </form>
@@ -348,6 +367,18 @@
   </div>
 </div>
 
+<div class="sheet" id="sheet-history" hidden>
+  <div class="sheet-card">
+    <h2>历史对话</h2>
+    <p class="note">点一条继续聊，点右边的 ✕ 删掉它。最多留 20 条，只存在这台手机上。</p>
+    <div class="hist-list" id="hist-list"></div>
+    <div class="sheet-actions">
+      <button class="primary" id="hist-new" type="button">开始新对话</button>
+      <button id="hist-close" type="button">关闭</button>
+    </div>
+  </div>
+</div>
+
 <div class="lightbox" id="lightbox" hidden><img id="lightbox-img" alt=""></div>
 <div class="toast" id="toast"></div>
 
@@ -395,10 +426,48 @@
     thinking: localStorage.getItem(K_THINK) !== '0',
     messages: []
   };
-  try {
-    var saved = JSON.parse(localStorage.getItem(K_CHAT) || '[]');
-    if (Object.prototype.toString.call(saved) === '[object Array]') state.messages = saved;
-  } catch (e) { state.messages = []; }
+
+  /* ---------- 多会话存储 ----------
+     一条会话 = { id, title, updated, messages }，messages 的结构和以前单条 K_CHAT 一样。 */
+  var K_SESSIONS = 'fa_sessions';
+  var K_CURRENT = 'fa_session_current';
+  var MAX_SESSIONS = 20;
+
+  function newSessionId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+  function readArray(key) {
+    try {
+      var v = JSON.parse(localStorage.getItem(key) || '[]');
+      return Object.prototype.toString.call(v) === '[object Array]' ? v : [];
+    } catch (e) { return []; }
+  }
+
+  var sessions = [];
+  var stored = readArray(K_SESSIONS);
+  for (var sIdx = 0; sIdx < stored.length; sIdx++) {
+    var sRaw = stored[sIdx];
+    if (sRaw && Object.prototype.toString.call(sRaw.messages) === '[object Array]') {
+      sessions.push({
+        id: String(sRaw.id || newSessionId()),
+        title: String(sRaw.title || ''),
+        updated: Number(sRaw.updated) || 0,
+        messages: sRaw.messages
+      });
+    }
+  }
+
+  var current = null;
+  var currentId = localStorage.getItem(K_CURRENT) || '';
+  for (var cIdx = 0; cIdx < sessions.length; cIdx++) {
+    if (sessions[cIdx].id === currentId) current = sessions[cIdx];
+  }
+  if (!current) {
+    /* 老版本只存了一条对话（K_CHAT），把它搬成第一条会话。 */
+    current = { id: newSessionId(), title: '', updated: Date.now(), messages: readArray(K_CHAT) };
+    sessions.unshift(current);
+  }
+  state.messages = current.messages;
 
   var attachments = [];
   var busy = false;
@@ -492,6 +561,23 @@
 
   function ready() { return !!(state.backend || state.key); }
 
+  function titleOf(messages) {
+    for (var i = 0; i < messages.length; i++) {
+      if (messages[i].role === 'user' && messages[i].text) {
+        var t = String(messages[i].text).replace(/\s+/g, ' ').trim();
+        if (t) return t.slice(0, 18);
+      }
+    }
+    return '';
+  }
+
+  function saveSessions() {
+    try {
+      localStorage.setItem(K_SESSIONS, JSON.stringify(sessions));
+      localStorage.setItem(K_CURRENT, current.id);
+    } catch (e) { /* 存储不可用：只影响记忆，不影响对话 */ }
+  }
+
   function persist() {
     try {
       var plain = [];
@@ -503,7 +589,20 @@
           plain.push({ role: 'assistant', content: m.content || '', reasoning: m.reasoning || '', failed: !!m.failed });
         }
       }
-      localStorage.setItem(K_CHAT, JSON.stringify(plain.slice(-MAX_KEEP)));
+      plain = plain.slice(-MAX_KEEP);
+      current.messages = plain;
+      state.messages = plain;
+      current.updated = Date.now();
+      if (!current.title) current.title = titleOf(plain);
+
+      /* 新的在前，最多留 MAX_SESSIONS 条；当前这条永远保留。 */
+      sessions.sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); });
+      var kept = [];
+      for (var k = 0; k < sessions.length; k++) {
+        if (kept.length < MAX_SESSIONS || sessions[k] === current) kept.push(sessions[k]);
+      }
+      sessions = kept;
+      saveSessions();
     } catch (e) { /* 存储不可用：只影响记忆，不影响对话 */ }
   }
 
@@ -606,6 +705,32 @@
     msg._bubble.className = 'bubble' + (msg.failed ? ' failed' : '');
   }
 
+  var speakingBtn = null;
+
+  function stopSpeaking() {
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    if (speakingBtn) {
+      speakingBtn.textContent = '朗读';
+      speakingBtn = null;
+    }
+  }
+
+  /* 朗读回答：手机上用的系统语音，不走网络请求。 */
+  function speak(text, btn) {
+    if (!window.speechSynthesis) { toast('这台设备不支持朗读'); return; }
+    if (speakingBtn === btn) { stopSpeaking(); return; }
+    stopSpeaking();
+    var u = new SpeechSynthesisUtterance(String(text).slice(0, 1500));
+    u.lang = 'zh-CN';
+    u.onend = function () {
+      if (speakingBtn === btn) { btn.textContent = '朗读'; speakingBtn = null; }
+    };
+    u.onerror = u.onend;
+    speakingBtn = btn;
+    btn.textContent = '停止';
+    window.speechSynthesis.speak(u);
+  }
+
   function ensureCopy(msg) {
     if (!msg._tools || msg._tools.querySelector('button') || !msg.content) return;
     var btn = document.createElement('button');
@@ -618,6 +743,14 @@
       });
     });
     msg._tools.appendChild(btn);
+
+    if (window.speechSynthesis) {
+      var say = document.createElement('button');
+      say.type = 'button';
+      say.textContent = '朗读';
+      say.addEventListener('click', function () { speak(msg.content, say); });
+      msg._tools.appendChild(say);
+    }
   }
 
   var EXAMPLES = ['这上面写的什么？', '这个药一天吃几次？', '帮我写一段话', '帮我算一下'];
@@ -955,7 +1088,7 @@
     }
     if (status === 402) return '余额不够了，请到 DeepSeek 平台充值。';
     if (status === 413) return '图片太大了，换一张小一点的试试。';
-    if (status === 429) return '问得太快了，等十几秒再试。';
+    if (status === 429) return detail || '问得太快了，等十几秒再试。';
     if (status >= 500) return '服务器那边出错了（' + status + '），过一会儿再试。';
     return '出错了（' + status + '）' + (detail ? '：' + detail : '');
   }
@@ -1141,12 +1274,111 @@
 
   stopBtn.addEventListener('click', function () { if (controller) controller.abort(); });
 
-  $('btn-new').addEventListener('click', function () {
-    if (busy) return;
-    if (state.messages.length && !confirm('开始新的对话？现在的内容会被清空。')) return;
-    state.messages = [];
-    localStorage.removeItem(K_CHAT);
+  /* ---------- 历史对话 ---------- */
+  function timeText(ts) {
+    if (!ts) return '';
+    var d = new Date(ts);
+    var now = new Date();
+    if (d.toDateString() === now.toDateString()) {
+      return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    }
+    if (d.toDateString() === new Date(now.getTime() - 86400000).toDateString()) return '昨天';
+    return (d.getMonth() + 1) + '月' + d.getDate() + '日';
+  }
+
+  function renderHistory() {
+    var list = $('hist-list');
+    list.innerHTML = '';
+    sessions.sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); });
+    for (var i = 0; i < sessions.length; i++) {
+      (function (s) {
+        var row = document.createElement('div');
+        row.className = 'hist-row' + (s === current ? ' on' : '');
+
+        var open = document.createElement('button');
+        open.type = 'button';
+        open.className = 'hist-open';
+        var title = document.createElement('span');
+        title.className = 'hist-title';
+        title.textContent = s.title || '新对话';
+        var meta = document.createElement('span');
+        meta.className = 'hist-meta';
+        meta.textContent = (timeText(s.updated) ? timeText(s.updated) + ' · ' : '') + s.messages.length + ' 条消息';
+        open.appendChild(title);
+        open.appendChild(meta);
+        open.addEventListener('click', function () { switchSession(s); });
+
+        var del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'hist-del';
+        del.setAttribute('aria-label', '删除这条对话');
+        del.textContent = '✕';
+        del.addEventListener('click', function () {
+          if (!confirm('删除「' + (s.title || '新对话') + '」？删了就找不回来了。')) return;
+          removeSession(s);
+        });
+
+        row.appendChild(open);
+        row.appendChild(del);
+        list.appendChild(row);
+      })(sessions[i]);
+    }
+  }
+
+  function openHistory() {
+    renderHistory();
+    $('sheet-history').hidden = false;
+  }
+  function closeHistory() { $('sheet-history').hidden = true; }
+
+  function switchSession(target) {
+    if (busy) { toast('等它回答完再切换'); return; }
+    if (target === current) { closeHistory(); return; }
+    persist();
+    current = target;
+    state.messages = current.messages;
+    stopSpeaking();
     renderAll();
+    saveSessions();
+    closeHistory();
+  }
+
+  function removeSession(target) {
+    var at = sessions.indexOf(target);
+    if (at < 0) return;
+    sessions.splice(at, 1);
+    if (target === current) {
+      if (!sessions.length) sessions.push({ id: newSessionId(), title: '', updated: Date.now(), messages: [] });
+      current = sessions[0];
+      state.messages = current.messages;
+      stopSpeaking();
+      renderAll();
+    }
+    saveSessions();
+    renderHistory();
+  }
+
+  function newSession() {
+    if (busy) return;
+    if (state.messages.length && !confirm('开始新的对话？这一条会留在「历史对话」里。')) return;
+    persist();
+    current = { id: newSessionId(), title: '', updated: Date.now(), messages: [] };
+    sessions.unshift(current);
+    state.messages = current.messages;
+    attachments = [];
+    renderAttachments();
+    stopSpeaking();
+    renderAll();
+    saveSessions();
+    closeHistory();
+  }
+
+  $('btn-new').addEventListener('click', newSession);
+  $('btn-history').addEventListener('click', openHistory);
+  $('hist-new').addEventListener('click', newSession);
+  $('hist-close').addEventListener('click', closeHistory);
+  $('sheet-history').addEventListener('click', function (e) {
+    if (e.target === $('sheet-history')) closeHistory();
   });
 
   $('btn-settings').addEventListener('click', openSheet);
@@ -1242,19 +1474,60 @@
   $('mode-family').addEventListener('click', function () { setMode('family'); });
   $('set-clear').addEventListener('click', function () {
     if (!confirm('清除这台手机上保存的钥匙和聊天记录？')) return;
-    [K_KEY, K_BACKEND, K_CODE, K_MODEL, K_SYS, K_THINK, K_CHAT].forEach(function (k) { localStorage.removeItem(k); });
+    [K_KEY, K_BACKEND, K_CODE, K_MODEL, K_SYS, K_THINK, K_CHAT, K_SESSIONS, K_CURRENT].forEach(function (k) { localStorage.removeItem(k); });
     state.key = '';
     state.backend = DEFAULT_BACKEND;
     state.code = '';
     state.model = DEFAULT_MODEL;
     state.system = '';
     state.thinking = true;
-    state.messages = [];
+    sessions = [];
+    current = { id: newSessionId(), title: '', updated: Date.now(), messages: [] };
+    sessions.push(current);
+    state.messages = current.messages;
     refreshBar();
     renderAll();
     closeSheet();
+    toast('这台手机上的数据已清空');
   });
   sheetEl.addEventListener('click', function (e) { if (e.target === sheetEl) closeSheet(); });
+
+  /* ---------- 语音输入 ---------- */
+  var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var recognition = null;
+  var listening = false;
+  var micBtn = $('btn-mic');
+
+  if (SpeechRec && micBtn) {
+    micBtn.hidden = false;
+    micBtn.addEventListener('click', function () {
+      if (listening) { if (recognition) recognition.stop(); return; }
+      if (busy) { toast('等它回答完再说话'); return; }
+      var base = inputEl.value.trim();
+      recognition = new SpeechRec();
+      recognition.lang = 'zh-CN';
+      recognition.interimResults = true;
+      recognition.continuous = false;
+      recognition.onresult = function (e) {
+        var said = '';
+        for (var i = 0; i < e.results.length; i++) said += e.results[i][0].transcript;
+        inputEl.value = (base ? base + ' ' : '') + said;
+        autosize();
+      };
+      recognition.onerror = function (e) {
+        listening = false;
+        micBtn.classList.remove('rec');
+        toast(e && e.error === 'not-allowed' ? '没有麦克风权限，请在浏览器里允许一下' : '没听清，再说一次试试');
+      };
+      recognition.onend = function () {
+        listening = false;
+        micBtn.classList.remove('rec');
+      };
+      try { recognition.start(); } catch (err) { toast('这台设备用不了语音输入'); return; }
+      listening = true;
+      micBtn.classList.add('rec');
+    });
+  }
 
   $('btn-camera').addEventListener('click', function () { $('pick-camera').click(); });
   $('btn-file').addEventListener('click', function () { $('pick-file').click(); });
@@ -1301,6 +1574,9 @@
   if (params.get('action') === 'camera') {
     setTimeout(function () { $('pick-camera').click(); }, 400);
   }
+  if (params.get('action') === 'mic' && !micBtn.hidden) {
+    setTimeout(function () { micBtn.click(); }, 400);
+  }
 
   var standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
   var isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -1314,6 +1590,7 @@
 
   refreshBar();
   renderAll();
+  saveSessions();
   if (!ready()) openSheet();
   else if (state.backend && BACKEND_NEEDS_CODE && !state.code) openSheet();
 })();

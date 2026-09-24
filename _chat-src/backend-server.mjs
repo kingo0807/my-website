@@ -7,6 +7,7 @@
  *
  * 用法：
  *   DEEPSEEK_API_KEY=sk-xxx FAMILY_CODE=你的口令 node server.mjs
+ * 可选：DAILY_LIMIT=200（每台设备每天最多问几次，0 表示不限）
  * 然后用 Nginx / 宝塔反代到 https://你的子域名（必须是 HTTPS，见下方说明）。
  */
 
@@ -17,6 +18,22 @@ const KEY = process.env.DEEPSEEK_API_KEY || '';
 const FAMILY_CODE = process.env.FAMILY_CODE || '';
 const ALLOWED = (process.env.ALLOWED_ORIGIN || 'https://wangyuyue.xyz').split(',');
 const DEEPSEEK = 'https://api.deepseek.com';
+const DAILY_LIMIT = process.env.DAILY_LIMIT === undefined ? 200 : Number(process.env.DAILY_LIMIT);
+
+/* 每日额度：进程内存计数，重启就清零——个人服务器够用。
+   要跨重启保留，把 quota 换成文件或 Redis 即可，返回结构不用变。 */
+const quota = new Map();
+function countToday(req) {
+  if (!Number.isFinite(DAILY_LIMIT) || DAILY_LIMIT <= 0) return { limited: false, limit: 0, remaining: 0 };
+  const day = new Date().toISOString().slice(0, 10);
+  const who = (req.headers['cf-connecting-ip'] || req.socket.remoteAddress || 'unknown') + '|' + day;
+  const used = (quota.get(who) || 0) + 1;
+  quota.set(who, used);
+  if (quota.size > 5000) {
+    for (const k of quota.keys()) if (!k.endsWith(day)) quota.delete(k);
+  }
+  return { limited: used > DAILY_LIMIT, limit: DAILY_LIMIT, remaining: Math.max(0, DAILY_LIMIT - used) };
+}
 
 createServer(async (req, res) => {
   const origin = req.headers.origin || '';
@@ -25,6 +42,7 @@ createServer(async (req, res) => {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'content-type, x-family-code',
+    'Access-Control-Expose-Headers': 'X-Quota-Remaining',
     'Vary': 'Origin',
   };
   const fail = (status, message) => {
@@ -41,6 +59,8 @@ createServer(async (req, res) => {
 
   // 对话：原样转发，流式响应边收边发
   if (req.method === 'POST' && path === '/chat') {
+    const q = countToday(req);
+    if (q.limited) return fail(429, '今天的用量到上限了（每天 ' + q.limit + ' 次），明天再来吧');
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     let upstream;
@@ -53,10 +73,12 @@ createServer(async (req, res) => {
     } catch (err) {
       return fail(502, '连不上 DeepSeek：' + err.message);
     }
-    res.writeHead(upstream.status, Object.assign({
+    const chatHeaders = Object.assign({
       'content-type': upstream.headers.get('content-type') || 'application/json',
       'cache-control': 'no-store',
-    }, cors));
+    }, cors);
+    if (q.limit) chatHeaders['X-Quota-Remaining'] = String(q.remaining);
+    res.writeHead(upstream.status, chatHeaders);
     if (upstream.body) {
       const reader = upstream.body.getReader();
       for (;;) {
@@ -93,4 +115,5 @@ createServer(async (req, res) => {
   console.log('家庭助手后端已启动: http://0.0.0.0:' + PORT);
   console.log('路由: POST /chat   GET /balance');
   console.log('家庭口令: ' + (FAMILY_CODE ? '已开启' : '未设置（任何人拿到地址都能用）'));
+  console.log('每日额度: ' + (DAILY_LIMIT > 0 ? '每台设备 ' + DAILY_LIMIT + ' 次' : '不限'));
 });
