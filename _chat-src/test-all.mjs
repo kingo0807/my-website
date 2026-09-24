@@ -151,7 +151,7 @@ check('历史面板列表容器', html, ['id="hist-list"']);
 check('切换会话时先落盘', js, ['persist();\n    current = target;']);
 check('已移除语音输入', js, [], ['webkitSpeechRecognition', 'SpeechRecognition']);
 check('已移除朗读', js, [], ['speechSynthesis', 'SpeechSynthesisUtterance']);
-check('已移除语音相关界面', html, [], ['id="btn-mic"', 'id="voice-check"', 'id="voice-report"', 'id="voice-test"']);
+check('已移除语音相关界面', html, [], ['id="voice-check"', 'id="voice-report"', 'id="voice-test"']);
 check('语音深链已移除', js, [], ["action') === 'mic'"]);
 check('输入框提示文字', html, ['placeholder="打字或拍照问我"']);
 check('清理本机数据包含会话', js, ['K_SESSIONS, K_CURRENT']);
@@ -167,6 +167,20 @@ check('Worker 额度响应头', worker, ['X-Quota-Remaining']);
 check('Worker 记账失败时放行', worker, ['记账失败不能把家里人挡在门外']);
 check('Node 版也有额度', serverCopy, ['DAILY_LIMIT', 'fail(429']);
 check('两份 Node 版仍然逐字节相同', serverFlat, [serverCopy]);
+
+// ---------- 7. 语音输入（走家庭后端的 /asr）----------
+console.log('== 语音输入（后端 ASR）==');
+const wrangler = readFileSync('backend/wrangler.toml', 'utf8');
+check('麦克风按钮', html, ['id="btn-mic"']);
+check('录音与 WAV 编码', js, ['function floatToWav', 'createScriptProcessor', 'getUserMedia']);
+check('降采样到 16kHz', js, ['function downsample', '16000']);
+check('发给家庭后端 /asr', js, ["'/asr'", 'audio/wav']);
+check('只在家庭服务器模式显示', js, ['function micAvailable', 'state.backend']);
+check('不再依赖浏览器自带识别', js, [], ['webkitSpeechRecognition', 'SpeechRecognition']);
+check('Worker 调用 Workers AI', worker, ['env.AI.run', '@cf/openai/whisper-large-v3-turbo']);
+check('Worker 有 /asr 路由', worker, ["path === '/asr'", 'env.AI']);
+check('wrangler 配了 AI 绑定', wrangler, ['[ai]', 'binding = "AI"']);
+check('Node 版也有 /asr', serverCopy, ["path === '/asr'", 'ASR_URL']);
 
 console.log('');
 console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项');

@@ -6,3 +6,7 @@ compatibility_date = "2026-09-01"
 [[routes]]
 pattern = "api.wangyuyue.xyz"
 custom_domain = true
+
+# 语音识别用的 Workers AI 绑定（免费计划每天 10,000 Neurons，约 214 分钟音频）
+[ai]
+binding = "AI"

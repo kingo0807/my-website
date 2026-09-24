@@ -7,16 +7,25 @@
  * 路由：
  *   POST /chat      转发到 /chat/completions，流式响应原样透传
  *   GET  /balance   查询账户余额
+ *   POST /asr       录音转文字（用绑定的 Workers AI Whisper）
  *
  * 需要配置的环境变量（用 wrangler secret put 设置，不要写在这个文件里）：
  *   DEEPSEEK_API_KEY  必填，sk- 开头的钥匙
  *   FAMILY_CODE       选填，设了就要求前端带同一个口令
  *   DAILY_LIMIT       选填，每台设备每天最多问几次，默认 200，填 0 表示不限
+ *
+ * 语音识别用的是 Workers AI 绑定，写在 wrangler.toml 里，不是 secret：
+ *   [ai]
+ *   binding = "AI"
+ * 免费计划每天送 10,000 Neurons；本模型约 46.6 Neurons/音频分钟，
+ * 相当于每天约 214 分钟免费，超出部分 Cloudflare 会直接报错而不会产生费用。
  */
 
 const DEEPSEEK = 'https://api.deepseek.com';
 const ALLOWED_ORIGINS = ['https://wangyuyue.xyz', 'https://www.wangyuyue.xyz'];
 const DEFAULT_DAILY_LIMIT = 200;
+const ASR_MODEL = '@cf/openai/whisper-large-v3-turbo';
+const ASR_MAX_BYTES = 8 * 1024 * 1024;
 
 /* 每日额度：用 Workers 自带的 Cache API 记账，不需要额外配置。
    注意：缓存按 Cloudflare 机房各自保存，所以这是"大致额度"而不是精确计数；
@@ -40,6 +49,15 @@ async function countToday(env, request) {
     /* 记账失败不能把家里人挡在门外：放行。 */
     return { limited: false, limit: limit, used: used, remaining: 0 };
   }
+}
+
+/* 音频转 base64：某些模型输入只认 base64，作为数组形式的兜底。 */
+function toBase64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(s);
 }
 
 export default {
@@ -86,6 +104,46 @@ export default {
       headers.set('cache-control', 'no-store');
       if (quota.limit) headers.set('X-Quota-Remaining', String(quota.remaining));
       return new Response(upstream.body, { status: upstream.status, headers: headers });
+    }
+
+    /* 录音转文字：前端传 16kHz 单声道 WAV，这里直接喂给 Workers AI。 */
+    if (request.method === 'POST' && path === '/asr') {
+      if (!env.AI) return fail(501, '后端还没开启语音识别：wrangler.toml 里缺少 [ai] binding = "AI"');
+      const quota = await countToday(env, request);
+      if (quota.limited) {
+        return fail(429, '今天的用量到上限了（每天 ' + quota.limit + ' 次），明天再来吧');
+      }
+      const bytes = new Uint8Array(await request.arrayBuffer());
+      if (!bytes.length) return fail(400, '没有收到音频');
+      if (bytes.length > ASR_MAX_BYTES) return fail(413, '录音太长了，控制在 1 分钟以内');
+
+      let out;
+      try {
+        out = await env.AI.run(ASR_MODEL, {
+          audio: Array.from(bytes),
+          language: 'zh',
+          task: 'transcribe',
+          vad_filter: true,
+        });
+      } catch (err1) {
+        /* 数组形式不被接受时，退一步用 base64 再试一次。 */
+        try {
+          out = await env.AI.run(ASR_MODEL, {
+            audio: toBase64(bytes),
+            language: 'zh',
+            task: 'transcribe',
+            vad_filter: true,
+          });
+        } catch (err2) {
+          return fail(502, '语音识别失败：' + ((err2 && err2.message) || err2));
+        }
+      }
+      const text = (out && (out.text || (out.transcription_info && out.transcription_info.text))) || '';
+      const headers = new Headers(cors);
+      headers.set('content-type', 'application/json; charset=utf-8');
+      headers.set('cache-control', 'no-store');
+      if (quota.limit) headers.set('X-Quota-Remaining', String(quota.remaining));
+      return new Response(JSON.stringify({ text: String(text) }), { status: 200, headers: headers });
     }
 
     if (request.method === 'GET' && path === '/balance') {

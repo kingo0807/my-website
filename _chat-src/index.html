@@ -249,6 +249,7 @@
     border: 1px solid var(--border); background: var(--bg); color: var(--muted);
   }
   .hist-del:hover { color: var(--danger); border-color: var(--danger); }
+  .icon-btn.rec { background: rgba(212, 56, 13, .12); border-color: var(--danger); color: var(--danger); }
 </style>
 </head>
 <body>
@@ -276,6 +277,7 @@
   <form class="composer" id="composer" autocomplete="off">
     <button class="icon-btn" id="btn-camera" type="button" title="拍照" aria-label="拍照">📷</button>
     <button class="icon-btn" id="btn-file" type="button" title="传文件" aria-label="传文件">📎</button>
+    <button class="icon-btn" id="btn-mic" type="button" title="按住说话" aria-label="按住说话" hidden>🎤</button>
     <textarea id="input" rows="1" placeholder="打字或拍照问我" enterkeyhint="send"></textarea>
     <button class="send" id="send" type="submit">发送</button>
     <button class="stop" id="stop" type="button" hidden>停止</button>
@@ -1313,6 +1315,7 @@
     localStorage.setItem(K_SYS, state.system);
     localStorage.setItem(K_THINK, state.thinking ? '1' : '0');
     refreshBar();
+    refreshMic();
     closeSheet();
     if (!ready()) { openSheet(); toast('还需要填一样：钥匙或家庭服务器地址'); return; }
     toast('设置好了，可以用了');
@@ -1546,6 +1549,164 @@
     toast('这台手机上的数据已清空');
   });
   sheetEl.addEventListener('click', function (e) { if (e.target === sheetEl) closeSheet(); });
+
+  /* ---------- 语音输入（录音 → 家庭后端 /asr → Workers AI Whisper）----------
+     不用浏览器自带的语音识别：华为浏览器那个接口一律返回 not-allowed。
+     这里浏览器只负责采集，识别在服务端做，所以只要能录音就能用。 */
+  var micBtn = $('btn-mic');
+  var mediaStream = null;
+  var audioCtx = null;
+  var recNode = null;
+  var recSource = null;
+  var recChunks = [];
+  var recLength = 0;
+  var recording = false;
+  var recTimer = null;
+  var REC_MAX_MS = 60000;
+
+  function micAvailable() {
+    return !!(micBtn && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && state.backend);
+  }
+  function refreshMic() {
+    if (micBtn) micBtn.hidden = !micAvailable();
+  }
+
+  function mergeChunks() {
+    var out = new Float32Array(recLength);
+    var at = 0;
+    for (var i = 0; i < recChunks.length; i++) { out.set(recChunks[i], at); at += recChunks[i].length; }
+    return out;
+  }
+
+  function downsample(samples, from, to) {
+    if (to >= from) return samples;
+    var ratio = from / to;
+    var len = Math.floor(samples.length / ratio);
+    var out = new Float32Array(len);
+    for (var i = 0; i < len; i++) {
+      var start = Math.floor(i * ratio);
+      var end = Math.min(Math.floor((i + 1) * ratio), samples.length);
+      var sum = 0;
+      for (var j = start; j < end; j++) sum += samples[j];
+      out[i] = end > start ? sum / (end - start) : 0;
+    }
+    return out;
+  }
+
+  /* 16 位单声道 WAV：Whisper 最认这个格式，也不用管浏览器支持哪种编码器。 */
+  function floatToWav(samples, sampleRate) {
+    var buffer = new ArrayBuffer(44 + samples.length * 2);
+    var view = new DataView(buffer);
+    var writeStr = function (offset, s) {
+      for (var i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+    };
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + samples.length * 2, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, samples.length * 2, true);
+    var offset = 44;
+    for (var i = 0; i < samples.length; i++) {
+      var v = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(offset, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+      offset += 2;
+    }
+    return new Blob([view], { type: 'audio/wav' });
+  }
+
+  function releaseRecording() {
+    try { if (recNode) { recNode.onaudioprocess = null; recNode.disconnect(); } } catch (e) { /* 忽略 */ }
+    try { if (recSource) recSource.disconnect(); } catch (e) { /* 忽略 */ }
+    try { if (audioCtx && audioCtx.close) audioCtx.close(); } catch (e) { /* 忽略 */ }
+    if (mediaStream) mediaStream.getTracks().forEach(function (t) { t.stop(); });
+    recNode = null; recSource = null; audioCtx = null; mediaStream = null;
+    if (recTimer) { clearTimeout(recTimer); recTimer = null; }
+  }
+
+  function stopRecording(send) {
+    if (!recording) return;
+    recording = false;
+    if (micBtn) micBtn.classList.remove('rec');
+    var rate = audioCtx ? audioCtx.sampleRate : 48000;
+    var samples = send ? downsample(mergeChunks(), rate, 16000) : null;
+    recChunks = [];
+    recLength = 0;
+    releaseRecording();
+    if (!send) return;
+    if (!samples || samples.length < 1600) { toast('太短了，多说几个字再发'); return; }
+    uploadAudio(floatToWav(samples, 16000));
+  }
+
+  function startRecording() {
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      mediaStream = stream;
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new Ctx();
+      recSource = audioCtx.createMediaStreamSource(stream);
+      recNode = audioCtx.createScriptProcessor(4096, 1, 1);
+      recChunks = [];
+      recLength = 0;
+      recNode.onaudioprocess = function (e) {
+        if (!recording) return;
+        var data = e.inputBuffer.getChannelData(0);
+        recChunks.push(new Float32Array(data));
+        recLength += data.length;
+      };
+      recSource.connect(recNode);
+      recNode.connect(audioCtx.destination);   /* 输出是静音，只是让这个节点真的跑起来 */
+      recording = true;
+      if (micBtn) micBtn.classList.add('rec');
+      toast('在录了，说完再点一下 🎤');
+      recTimer = setTimeout(function () {
+        if (recording) { toast('到 1 分钟了，先发出去'); stopRecording(true); }
+      }, REC_MAX_MS);
+    }, function (err) {
+      var name = (err && err.name) || '未知';
+      toast(name === 'NotAllowedError'
+        ? '麦克风被挡住了：点地址栏的锁图标，把麦克风改成「允许」'
+        : '拿不到麦克风：' + name);
+    });
+  }
+
+  function uploadAudio(blob) {
+    var url = state.backend.replace(/\/+$/, '') + '/asr';
+    var headers = { 'Content-Type': 'audio/wav' };
+    if (state.code) headers['X-Family-Code'] = state.code;
+    toast('正在识别…');
+    fetch(url, { method: 'POST', headers: headers, body: blob }).then(function (res) {
+      return res.text().then(function (t) {
+        if (!res.ok) {
+          if (res.status === 501) throw new Error('家庭后端还没开启语音识别，先把带 /asr 的后端部署上去');
+          throw new Error(describeHttp(res.status, t));
+        }
+        var text = '';
+        try { text = String(JSON.parse(t).text || '').trim(); } catch (e) { text = ''; }
+        if (!text) { toast('没听清，再说一次试试'); return; }
+        inputEl.value = (inputEl.value.trim() ? inputEl.value.trim() + ' ' : '') + text;
+        autosize();
+        inputEl.focus();
+      });
+    }).catch(function (err) {
+      toast('识别失败：' + ((err && err.message) || err));
+    });
+  }
+
+  if (micBtn) {
+    micBtn.addEventListener('click', function () {
+      if (busy) { toast('等它回答完再说话'); return; }
+      if (recording) { stopRecording(true); return; }
+      startRecording();
+    });
+  }
+  refreshMic();
 
   $('btn-camera').addEventListener('click', function () { $('pick-camera').click(); });
   $('btn-file').addEventListener('click', function () { $('pick-file').click(); });

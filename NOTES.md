@@ -112,3 +112,19 @@
   - 语音识别应先用 `getUserMedia` 真取一次麦克风，把「权限被拒」和「识别服务被拒」区分开，否则提示会指错方向。
 - 决定与结果：用户要求直接删除语音功能。已删除：`btn-mic`、语音识别整块逻辑（错误码表 / askMic / startRecognition）、朗读整块（speak / stopSpeaking / zhVoice）、设置里的语音诊断面板、`.voice-report` 与 `.icon-btn.rec` 样式、`?action=mic` 深链、manifest 的「说话」快捷方式；输入框提示回到「打字或拍照问我」。`sw.js` 缓存升到 `family-assistant-v3`（manifest 变了，外壳要换）。自检 64 → 58 项，其中新增 5 项是「语音相关代码必须已移除」的断言。
 - 给用户的替代方案：点输入框，用**输入法自带的麦克风**说话（识别在输入法内完成，不依赖浏览器服务）；如果以后要做真正的网页语音输入，正确路径是「浏览器录音 → 后端 `/asr` → 第三方 ASR」，因为 Worker 跑在 Cloudflare 边缘（不在国内），能直连 OpenAI Whisper 一类的服务——需要单独申请 ASR key。
+
+### 2026-09-24 · 语音输入回归：走 Cloudflare Workers AI（session-a334fcba-75a1-4d39-a7d5-939c9ebb5b0e）
+
+- 决策依据（查证过的现价）：Workers AI 免费计划每天 10,000 Neurons，`@cf/openai/whisper-large-v3-turbo` 为 46.63 Neurons/音频分钟 → **约 214 分钟/天免费**；超出后 $0.011/1,000 Neurons（≈ ¥0.0037/分钟），且免费计划超额是**直接报错**而不是计费。来源：[Workers AI Pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/)（2026-09-17 更新）、[模型页](https://developers.cloudflare.com/workers-ai/models/whisper-large-v3-turbo/)。所以不需要新账号、新 key、信用卡。
+- 实现：
+  - `_chat-src/backend/wrangler.toml` 加 `[ai] binding = "AI"`；
+  - Worker 加 `POST /asr`：读原始音频 → `env.AI.run(...)`（数组形式失败时自动退到 base64）→ 返回 `{text}`；走同一套每日额度；没配绑定返回 501；
+  - Node 版（`server.mjs`）没有 Workers AI，改走任意 OpenAI 兼容转写接口（`ASR_URL`/`ASR_KEY`/`ASR_MODEL`），未配置返回 501；
+  - 前端：🎤 按钮 + `getUserMedia` + `AudioContext`/`ScriptProcessor` 采集 → 降采样到 16kHz → 自己编码 16 位单声道 WAV → POST `/asr`。**不使用浏览器自带的语音识别**（华为浏览器会拒），所以只要能录音就能用；仅在「家庭服务器」模式显示。
+- 验证到哪一步：
+  - 自检 58 → 68 项（新增 10 项，含「不再依赖 webkitSpeechRecognition」「Node 版也有 /asr」「wrangler 配了 AI 绑定」）；
+  - 从页面里抽出 `downsample`/`floatToWav` 单独跑：14 项全过（RIFF/WAVE/fmt/data 头、16kHz、单声道、16 位、长度字段、幅度保真 0.499）；
+  - Worker 部署成功且绑定生效（`env.AI AI`，版本 `a7c03525` / 后续再部署一次）；
+  - 线上 `POST https://api.wangyuyue.xyz/asr` 不带口令返回 401 ✓ 路由已生效。
+- **未能验证的部分**：本地 `wrangler dev` 起不来——AI 绑定只能走 remote 模式，而这个账号没有注册 workers.dev 子域名（报错 "You need to register a workers.dev subdomain before running the dev command in remote mode"）。所以「模型是否接受这份 WAV」只能在真机上验：用户在手机上点 🎤 说一句即可。仓库里没有留下家庭口令值（已 grep 确认），无法从本机代测。
+- 如果真机上返回 502：说明模型不接受音频格式，备选顺序是 ① 已内置的 base64 回退 ② 改用 `@cf/openai/whisper` ③ 前端改传 webm/opus。
