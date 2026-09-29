@@ -128,3 +128,14 @@
   - 线上 `POST https://api.wangyuyue.xyz/asr` 不带口令返回 401 ✓ 路由已生效。
 - **未能验证的部分**：本地 `wrangler dev` 起不来——AI 绑定只能走 remote 模式，而这个账号没有注册 workers.dev 子域名（报错 "You need to register a workers.dev subdomain before running the dev command in remote mode"）。所以「模型是否接受这份 WAV」只能在真机上验：用户在手机上点 🎤 说一句即可。仓库里没有留下家庭口令值（已 grep 确认），无法从本机代测。
 - 如果真机上返回 502：说明模型不接受音频格式，备选顺序是 ① 已内置的 base64 回退 ② 改用 `@cf/openai/whisper` ③ 前端改传 webm/opus。
+
+### 2026-09-29 · 《Git 笔记》页面同步到最新长期笔记
+
+- 需求：「https://wangyuyue.xyz/guides/git/ 这个更新一下吧」。
+- 先做的判断（只读）：桌面长期笔记 `C:\Users\wyy\Desktop\git.md`（2312 行 / 09-29）与页面源文件 `_guides/git.md`（1877 行 / 09-23）是同一底稿的两代版本。按 `#{1,3}` 标题切段、逐段比 MD5 后确认：桌面版多 8 个章节、另有 12 处已有章节内容更新，**没有任何「只有页面版保留」的内容** → 属于「页面落后于笔记」，而不是两套各自演进的内容。
+- 做法：以桌面笔记为源重建 `_guides/git.md` 正文，保留原 front matter，`date` 更新为 2026-09-29（`sitemap.xml` 的 `lastmod` 取这个字段），并在标题下加一行「更新日期」。
+- 发布裁剪（经用户确认）：**不发布**「附录 B：文档维护规则 / 交接给其他模型时的维护协议」——它是内部维护协议，含桌面本地路径和一段给接手模型的启动提示。**同步规则记在这里：线上正文 = 桌面 git.md 去掉附录 B，再在标题下插入更新日期行；除此之外不做改写，方便以后逐字节核对。**
+- 桌面版新增：基础 12（`(END)` 分页）、基础 8（PR 合并后从最新上游重开分支，+76 行）、基础 2（`pathspec did not match` 判别）、基础 9（stash 报 `unable to create temporary file` 时的抢救顺序）、中等 3（compare 与 pulls 接口分工、基线语义重叠核查、`gh api --jq` 内嵌双引号被拆成两个参数的坑）、中等 4（`--unified=0` + `--unidiff-zero` 零上下文补丁）、中等 10（浅克隆 `refusing to merge unrelated histories` 与 `fetch --deepen`）、进阶 15（cherry-pick）、进阶 16（squash 压提交，用 `%T` 树哈希前后比对）、附录 A.9–A.11（`gh` 已登录但凭据助手失败、GitHub 隐私邮箱提交、PowerShell 把 git 的 stderr 进度当报错）、附录 A.1 与第三部分 12（用公开 Release 免配置更新）各补两行。
+- 顺带修正：附录 A.8 被整段重写。旧版把 `GIT_HTTP_PROXY` / `GIT_HTTPS_PROXY` 当成常见代理来源，新版按 Git 官方 `git-config` 更正为标准变量 `http_proxy` / `https_proxy` / `all_proxy`，并改成「保存原值 → 用 `-c http.proxy= -c remote.<remote>.proxy=` 只影响本次命令 → `finally` 恢复」的写法。
+- 桌面 `git.md` 本轮未修改：这是发布同步，没有产生新的、已验证的 Git 知识（维护协议要求「先完成用户请求，再只记录新知识」）。
+- 验收：`node _tools/check.mjs` 全绿（含 front matter 完整性、Liquid 配对、站内链接）；本地文件 LF、无 BOM。

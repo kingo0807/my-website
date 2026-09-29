@@ -1,12 +1,14 @@
 ---
 layout: article
 title: "Git 笔记：从基础到进阶"
-date: 2026-09-03
+date: 2026-09-29
 description: "从基础到进阶的 Git 命令与工作流笔记。"
 guide_order: 1
 ---
 
 # Git 笔记：从基础到进阶
+
+> 更新日期：2026-09-29（正文与本地长期笔记同步）
 
 这是一份“先走通主流程，再按问题查专题”的 Git 手册。前三部分按基础、中等、进阶递进；低频的 GitHub 服务、鉴权和发布问题集中放在附录，避免打断学习主线。
 
@@ -201,6 +203,20 @@ git branch -d <topic-branch>
 
 `git branch -d` 会在分支尚未合入当前历史时拒绝删除；若平台使用 squash merge，它也可能安全拒绝。此时先在 GitHub 确认 PR 已合并，并核对功能分支没有唯一需要保留的内容，再决定是否强制删除本地分支。远端分支是否删除取决于团队策略，不是流程的强制步骤。
 
+判断「这个已完成 PR 的本地分支到底还有没有未合并内容」时，不要只看 `git branch -vv` 或 `git rev-list --count <base>..<branch>` 报出的领先数：平台用 squash 或 rebase 合并后，原分支的 commit 不是基线分支的祖先，计数仍会显示「领先 N」，这只说明 hash 不同，不代表内容没合进去。删分支前补两条内容证据（补丁等价性的完整说明见本文件 cherry-pick 一节）：
+
+```bash
+git cherry -v <base> <branch>
+git diff --name-status <base> <branch>
+```
+
+逐行说明：
+
+1. `git cherry -v <base> <branch>`：列出 `<branch>` 独有 commit，前缀 `-` 表示该补丁在上游已有等价内容，`+` 表示还没有。
+2. `git diff --name-status <base> <branch>`：直接比较两端最终内容。输出为空，或只剩基线分支比它新、它本身从未拥有过的文件，才说明该分支的内容已被 `<base>` 覆盖。
+
+两条都指向「已合并」时再删除分支；任一条存疑就保留分支，或先 `git branch backup/<name> <branch>` 留下备份引用再删，之后仍可用 `git reflog` 或该备份找回。`git diff <base> <branch>` 的残留文件只反映「分支基线比 `<base>` 旧」，不要把它误读成「这次 PR 还有没提交的改动」。
+
 到这里闭环完成：上游包含改动，本地主分支已快进，临时分支已在确认后清理；若中途失败，则依据对应阶段回到备份、abort 或重新检查，而不是用 `reset --hard`/`--force` 掩盖原因。
 
 ## 第一部分：基础——独立完成日常开发
@@ -237,6 +253,8 @@ git log --oneline --decorate -5
 - `??`：未跟踪文件。
 
 因此，先精确执行 `git add -- <path>...`，再检查 `git status --short`，可以确认哪些内容会进入下一次 commit。
+
+如果 `git add -- <path>` 报 `fatal: pathspec '<path>' did not match any files`，表示当前工作树中没有匹配该路径的文件；这不是暂存成功，也通常不是换行或 remote 问题。先用 `git status --short`、`ls <path>` 或 `git stash show -u --name-status 'stash@{0}'` 确认文件是否仍在 stash、位于其他分支，或路径/大小写是否写错。文件尚在 stash 时先恢复，再执行 `git add`；不要用 `git add -A` 掩盖路径错误，否则可能把无关生成文件一起暂存。
 
 ### 3. 克隆到明确目录
 
@@ -485,6 +503,82 @@ git push origin <branch-name>
 
 GitHub PR 会自动更新。
 
+#### PR 已合并后要继续提交：从最新上游重开分支
+
+PR 一旦合并（squash 或 rebase 合并同样算），原分支就不要再追加 commit。新 PR 的三点差异以「新基线与该分支的共同祖先」为起点，该分支独有的旧提交会再次出现在 `Files changed` 中，维护者看到的是上一轮已经合并的内容。
+
+```bash
+gh pr list --repo <upstream-owner>/<repo> --author <your-owner> --state all --limit 20 --json number,headRefName,state
+```
+
+逐行说明：
+
+1. `gh pr list --repo <upstream-owner>/<repo> --author <your-owner> --state all --limit 20 --json number,headRefName,state`：读取目标仓库中自己提交过的 PR；`--state all` 包含已合并和已关闭的，`--json` 只返回需要核对的字段。某个 `headRefName` 对应的 `state` 是 `MERGED` 时，这个分支名就不能再复用。
+
+正确做法是先取最新上游基线，再新建分支把新改动带过去：
+
+```bash
+git fetch --prune upstream
+git diff --stat HEAD upstream/<base-branch> -- <path-1> <path-2>
+git switch --no-track -c <new-topic-branch> upstream/<base-branch>
+git add -- <path-1> <path-2>
+git diff --cached --name-status
+git commit -m "<type>(<scope>): <description>"
+git push -u origin <new-topic-branch>
+```
+
+逐行说明：
+
+1. `git fetch --prune upstream`：更新上游远端跟踪引用，并清理上游已删除分支的陈旧引用；不改工作区。
+2. `git diff --stat HEAD upstream/<base-branch> -- <path-1> <path-2>`：只比较本次要带走的路径在新旧基线之间是否相同。输出为空表示两边内容一致。
+3. `git switch --no-track -c <new-topic-branch> upstream/<base-branch>`：以最新上游分支为基线新建并切换分支。工作区中未提交的改动会被原样保留，前提是这些文件在新旧 commit 之间内容相同（即上一步输出为空）；内容不同时 Git 会拒绝切换并保持原状，不会丢改动。
+4. `git add -- <path-1> <path-2>`：只暂存本次要提交的路径，避免把工作区里其它无关改动一起带走。
+5. `git diff --cached --name-status`：提交前核对暂存清单，确认只有预期文件。
+6. `git commit -m "<type>(<scope>): <description>"`：把当前暂存区保存为新 commit。
+7. `git push -u origin <new-topic-branch>`：首次推送新分支并建立跟踪关系；不要用 `--force` 复用旧分支名。
+
+- 用途与适用条件：适用于「上一轮 PR 已合并，本轮只是对同一批文件的后续修正」。它比 stash 少一步，也不会污染其它分支。
+- 检查方法：推送后用 GitHub 比较接口预演 PR 内容，确认新增提交数和文件清单都符合预期：
+
+```bash
+gh api repos/<upstream-owner>/<repo>/compare/<base-branch>...<your-owner>:<new-topic-branch> --jq '{status: .status, ahead_by: .ahead_by, behind_by: .behind_by, files: [.files[].filename]}'
+```
+
+1. `gh api repos/.../compare/... --jq '{...}'`：服务端返回的 `ahead_by` 是新增提交数，`files` 是 PR 将显示的文件清单；两项都与预期一致才算可以提 PR。
+- 风险与恢复：旧分支保持原状，不要删除也不要强推；确认新 PR 合入后再清理本地和 fork 上的旧分支。
+
+#### 推送前确认自己对该仓库有没有写权限
+
+「推到官方仓库」和「有权限推官方仓库」是两件事。fork 工作流中个人账号通常对上游只有只读权限，先查一次可以避免把权限拒绝误判成凭据故障：
+
+```bash
+gh api repos/<upstream-owner>/<repo> --jq '{push: .permissions.push, admin: .permissions.admin, default: .default_branch}'
+```
+
+逐行说明：
+
+1. `gh api repos/<upstream-owner>/<repo> --jq '{...}'`：读取仓库元数据中当前登录账号的权限位。`push` 为 `false` 表示只能走 fork + PR，不能直接向上游推送；此时把分支推到自己的 fork，再让维护者合并。
+
+#### 开 PR 前确认这个改动是不是已经有 PR 了
+
+从别人的分支、PR 或本地游离提交 cherry-pick 之后再向同一上游提 PR 时，先花三条只读命令确认它没有被别人提过、也没有被上游合过，比等维护者指出重复要省事。如果提交信息里有 `(cherry picked from commit <sha>)`，就用那个来源 commit 作为 `<sha>`：
+
+```bash
+git for-each-ref --contains <sha> --format="%(refname)"
+gh api repos/<upstream-owner>/<repo>/commits/<sha> --jq '{sha: .sha, author: .commit.author.name, date: .commit.author.date}'
+gh api repos/<upstream-owner>/<repo>/commits/<sha>/pulls --jq '.[] | {number, title, state, head: .head.label, base: .base.ref, merged: .merged_at}'
+```
+
+逐行说明：
+
+1. `git for-each-ref --contains <sha> --format="%(refname)"`：列出本仓库所有包含该 commit 的引用（本地分支、远端跟踪分支、标签）。输出为空说明它不在本地的任何分支或标签上，很可能只是某次单独 fetch 或 cherry-pick 带进来的对象。
+2. `gh api repos/<upstream-owner>/<repo>/commits/<sha>`：读取该仓库网络中是否存在这个 commit。**能返回数据不等于它在某个分支上**：fork 网络里对象存在就可能被查到，所以这一步只证明「这个 hash 真实存在」，不证明「内容已经合进主干」。
+3. `gh api repos/<upstream-owner>/<repo>/commits/<sha>/pulls`：列出把这个 commit 包含在内的 PR。返回 `[]` 表示还没有人为它开过 PR；返回条目时先看 `state` 与 `merged`，已合并或已有 open PR 就不该再开一个重复的。
+
+- 用途与适用条件：适用于「改动来自别处、由自己代为向上游提交」的场景。第 2 条对上游仓库和 fork 都可以查，第 3 条要对真正接收 PR 的那个仓库查。
+- 检查方法：三条命令之后，还要确认上游基线分支里这段内容是否已经存在（直接读基线分支上的文件文本，或看该文件在基线分支上的最新提交），最后用比较接口核对本次 PR 会显示的文件清单，见本文件「查看 PR 相对上游的改动」一节。
+- 风险与恢复：这些命令全部只读，不改工作区、暂存区、本地历史或远端。注意 `git for-each-ref --contains` 输出为空只反映**本地**引用状况，不能据此断定「这个 commit 不存在」或「这个改动是新的」；结论要以上游实际文本为准。
+
 ### 9. 用 stash 临时隔离改动
 
 如果 rebase 或 revert 时看到：
@@ -505,6 +599,18 @@ git stash push -u -m "wip before rebase"
 逐行说明：
 
 1. `git stash push -u -m "wip before rebase"`：保存已跟踪改动及 `-u` 包含的未跟踪文件，并给 stash 添加说明。
+
+如果命令先显示 `Saved working directory and index state ...`，随后又报 `unable to create temporary file ... File exists` 或 `Could not reset index file`，说明 stash 条目可能已经创建，但清理工作区或重置索引没有完全成功。Windows 上常见原因是目标文件被编辑器、构建进程占用，或临时文件冲突。不要立即重复执行 stash；先核对并保留现有条目：
+
+```bash
+git status --short --branch
+git stash list
+git stash show -u --name-status 'stash@{0}'
+```
+
+确认内容后，优先用 `git stash apply 'stash@{0}'` 恢复，因为 `apply` 会保留 stash 作为备份；确认恢复和提交无误后，再用 `git stash drop 'stash@{0}'` 清理备份。LF/CRLF 警告本身不是导致 stash 失败的原因。
+
+如果工作区已有不应覆盖的改动，`git stash apply` 可能产生冲突；此时可以按路径从 stash 恢复。stash 中原本已跟踪的文件使用 `git restore --source='stash@{0}' -- <path>...`，由 `-u` 保存的未跟踪文件位于 stash 的第三个父提交，可使用 `git restore --source='stash@{0}^3' -- <path>...` 恢复。恢复前先用 `git stash show -u --name-status 'stash@{0}'` 核对路径，恢复后用 `git status --short` 验收；不要因此删除或重置无关的工作区改动。
 
 查看 stash：
 
@@ -590,6 +696,16 @@ Swap file ... already exists
 ```text
 Q
 ```
+
+### 12. Git 差异查看器底部显示 `(END)`
+
+`git diff`、`git log` 等命令输出较长时，Git 可能通过 `less` 分页显示。底部出现 `(END)` 表示已经看到输出末尾，不是报错，也不是命令仍在等待参数。
+
+```text
+q
+```
+
+按 `q` 退出分页器并返回 shell 提示符；这不会修改文件、暂存区或提交历史。
 
 这只会退出当前打开尝试，不会解决残留 swap。确认没有其他编辑进程后，可在 Vim 提示中选择恢复内容或删除确认为陈旧的 swap；处理完成后再执行 `git status`，确认 rebase 状态与提交信息无误，最后运行 `git rebase --continue`。不要在不清楚 swap 来源时直接删除它。
 
@@ -692,6 +808,47 @@ git diff upstream/main...main
 - `A..B` 常用于看 B 比 A 多了哪些 commit。
 - `A...B` 常用于看 PR 分支相对共同祖先的完整 diff。
 
+本地命令看的是本地引用；推送后想让 GitHub 按服务端实际状态再算一次同一份三点差异，用比较接口：
+
+```bash
+gh api repos/<upstream-owner>/<repo>/compare/<base-branch>...<fork-owner>:<topic-branch> --jq '{status: .status, ahead_by: .ahead_by, behind_by: .behind_by, files: [.files[].filename]}'
+```
+
+逐行说明：
+
+1. `gh api repos/<upstream-owner>/<repo>/compare/<base-branch>...<fork-owner>:<topic-branch> --jq '{...}'`：调用 GitHub 的比较接口并按 JSON 字段筛选输出。路径里的 `<fork-owner>:<topic-branch>` 用冒号把 fork 所有者和分支名连起来，专门用来比较「上游基线」与「自己 fork 里的分支」；`ahead_by` 是领先提交数，`behind_by` 是落后提交数，`files` 是 PR 会显示的文件清单。
+
+- 用途与适用条件：推送到 fork 之后、创建 PR 之前各跑一次，同时确认「只有预期的提交数」和「只有预期的文件」，比只看本地 diff 更接近维护者实际看到的内容。
+- 注意：`behind_by` 不为 0 不等于 PR 有问题，只说明基线分支又前进了；若希望 PR 的 diff 保持最小，先同步基线再推送。`files` 里出现与本次主题无关的文件时，说明分支基线过期或暂存时带上了多余改动，应停下重新建分支，而不是让维护者替你筛。`behind_by` 不为 0 时，再用 `git ls-remote <upstream> refs/heads/<base-branch>` 或 `gh api repos/<upstream-owner>/<repo>/commits/<base-branch> --jq .sha` 独立核对基线 tip：一次 `fetch` 后远端引用没更新不一定代表上游没动，也可能是 `fetch` 自己失败、而错误信息被管道里的 `Select-String`/`Where-Object` 过滤条件一起丢掉了（只保留「包含 main 的行」就会漏掉 `fatal: unable to access ...`）。
+- 判断「PR 能不能合」要看 pulls 接口，而不是 compare 接口：
+
+```bash
+gh api repos/<upstream-owner>/<repo>/pulls/<pr-number> --jq '{mergeable: .mergeable, mergeable_state: .mergeable_state, base_sha: .base.sha}'
+```
+
+逐行说明：
+
+1. `gh api repos/<upstream-owner>/<repo>/pulls/<pr-number> --jq '{...}'`：读取服务端对该 PR 的合并判定与当前基线 SHA。`mergeable` 为 `true` 且 `mergeable_state` 为 `clean` 表示三方合并可以自动完成；刚推送完时 `mergeStateStatus` 可能短暂显示 `UNKNOWN`，过几秒再查一次即可。
+
+- compare 接口返回 `status: diverged` 与 `mergeable_state: clean` 并不矛盾：`diverged` 只表示双方各有独有提交（`ahead_by > 0` 且 `behind_by > 0`），不是冲突信号。两个接口的分工是：compare 看「PR 会显示哪些提交和文件」，pulls 看「能不能合」。
+- 基线前进后还要查**语义重叠**，不能只看文本冲突：上游可能改了同一批文件、甚至删掉了同目录的另一篇文档，而三方合并依旧是 `clean`，此时 PR 的内容已经过时或与上游方向相反。
+
+```bash
+git fetch --prune upstream
+git log --oneline <old-base>..upstream/main -- <path-1> <path-2>
+git diff --stat <old-base> upstream/main -- <path-1> <path-2>
+```
+
+逐行说明：
+
+1. `git fetch --prune upstream`：更新上游远端跟踪引用，确认基线 tip 是否真的前进；不改工作区与本地历史。
+2. `git log --oneline <old-base>..upstream/main -- <path-1> <path-2>`：列出上游新增提交中碰过本次路径的那些；输出为空说明这批文件在基线前进期间没被动过。`<old-base>` 用分支的基线提交（分支起点，或上次同步时的 `upstream/<base-branch>`）。
+3. `git diff --stat <old-base> upstream/main -- <path-1> <path-2>`：看上游相对旧基线在这些路径上的增删规模，用来判断是否需要先同步基线再让维护者评审。
+
+第 2 条输出非空不等于必须 rebase：只要改动落在文件的不同位置，普通合并依旧干净；但应在 PR 描述或评论里说明已核对上游对同批文件的改动，必要时先同步基线再推送。
+
+- 易踩坑（Windows PowerShell）：`gh api ... --jq` 的表达式里只要含内嵌双引号，就会被拆成两个参数并报 `gh: accepts 1 arg(s), received 2`，看起来像接口、字段或权限写错，其实是本地传参问题。实测（Windows PowerShell 5.1.26100，同一 compare 接口）：`.files[] | "\(.status)  \(.filename)"`、`.files[0].filename + " X"`、以及把同一表达式先存入变量再传，三种写法全部失败；改成不含双引号的 `.files[] | [.status, .filename] | @tsv` 或 `.files[].filename` 立即正常。需要「状态 + 文件名」这类组合输出时用 `@tsv`，或每次只取一个字段、分多次调用。
+
 ### 4. 把一批未提交改动拆成多个 commit
 
 当工作区同时包含多个独立功能时，不要直接使用 `git add -A`。先按依赖顺序规划提交，再显式暂存属于当前 commit 的文件：
@@ -720,6 +877,20 @@ git commit -m "<本次提交的单一目的>"
 - 如果同一个文件里的不同代码块需要进入不同 commit，可使用 `git add -p <file>` 逐块选择。
 - 如果暂存错了文件，使用 `git restore --staged <file>` 只撤销暂存，不会丢弃工作区修改。
 - 提交顺序应先放底层能力，再放依赖它的业务改动，使每个 commit 都尽量可独立理解、测试和回退。
+
+需要把少量指定差异转移到内容略有变化的新基准分支时，可以生成零上下文补丁：
+
+```bash
+git diff --unified=0 -- <path>... > <patch-file>
+git apply --check --unidiff-zero <patch-file>
+git apply --unidiff-zero <patch-file>
+```
+
+1. `git diff --unified=0 -- <path>... > <patch-file>`：只为指定路径生成不包含周边上下文行的补丁文件，不修改工作区或历史。
+2. `git apply --check --unidiff-zero <patch-file>`：允许零上下文补丁并预检能否应用；只检查，不修改文件。
+3. `git apply --unidiff-zero <patch-file>`：把已通过预检的补丁应用到工作区，不自动暂存或提交。
+
+`--unified=0` 与 `--unidiff-zero` 必须配套；否则普通 `git apply` 会按默认上下文要求处理，可能报告 `patch does not apply`。零上下文补丁缺少周边定位信息，误匹配风险高于普通补丁，因此必须限制路径、先执行 `--check`，应用后再用 `git diff -- <path>...` 审查。预检失败时不要强制应用；重新核对目标分支和补丁内容，必要时从目标分支直接编辑。
 
 全部提交完成后统一检查：
 
@@ -1319,6 +1490,27 @@ git -C <absolute-worktree-path> status --short --branch
 - 操作前检查：先确认 `<absolute-worktree-path>` 确实是原关联目录，并读取其中 `.git` 文件核对它指向已经失效的旧路径；主仓库本身必须能够正常执行 `git status`。
 - 风险与恢复：传错路径可能修复错误的 worktree 记录，因此必须使用经过 `Resolve-Path` 或资源管理器确认的绝对路径。修复后若分支、HEAD 或工作区状态与预期不符，应停止 merge/push，保留目录并用 `git worktree list --porcelain` 重新核对，不能用 `reset --hard` 掩盖元数据问题。
 
+如果临时 worktree 的目录已经被手工删除或被系统临时目录清理掉，`git worktree list` 会在该条目后标注 `prunable`。这时它的路径已经不存在，靠路径去操作已经没有意义，改用 `prune` 清除管理记录：
+
+```bash
+git worktree list
+git worktree prune -n -v
+git worktree prune
+git worktree list
+```
+
+逐行说明：
+
+1. `git worktree list`：列出主工作树和关联 worktree；目录已消失的条目会带上 `prunable` 标记。
+2. `git worktree prune -n -v`：预演并说明会删除哪些记录；`-n` 只报告不执行，`-v` 输出原因（例如 `gitdir file points to non-existent location`）。
+3. `git worktree prune`：删除指向已不存在目录的 worktree 元数据。
+4. `git worktree list`：确认陈旧条目已经消失。
+
+- 用途与适用条件：只用于目录确实已经不存在的 worktree 记录。`prune` 清掉的是 `.git/worktrees/` 下的管理元数据，不删除任何工作区文件、分支或 commit；目录还在时不要用 `prune` 绕过 `git worktree remove` 对未提交改动和锁定状态的检查。
+- 检查方法：先跑 `-n -v` 预演并核对将被删除的条目名与预期路径一致，再执行真正的 `prune`，最后用 `git worktree list` 验收。
+- 易混淆风险：`-n -v` 的报告内容写在标准错误上，包装脚本不应把这段输出当成命令失败。另外 `git worktree remove` 没有 `-n`/`--dry-run`（Git 2.55 的用法只有 `[-f] <worktree>`），所以不要靠它去试探一个已消失的目录，预演一律用 `git worktree prune -n -v`。
+- 风险与恢复：记录删除后，`git worktree remove` 和 `git worktree repair` 都不再能通过该路径定位这个 worktree；因此执行前先确认该路径下确实没有需要保留的内容。分支本身不受影响，仍可用 `git branch -vv` 查看。
+
 ### 8. 把混合 PR 拆成多个独立 PR
 
 当一个 PR 同时包含性能优化、平台修复和业务稳定性修复时，优先按“可独立审查、测试和合并”拆分，而不是只按 commit 标题移动提交。建议顺序：
@@ -1455,6 +1647,33 @@ git -C <local-directory> status --short --branch
 - `sparse-checkout set <path>` 会用新集合替换当前稀疏路径；保留现有路径并追加时使用 `sparse-checkout add <path>`。两者会改变本地工作区中可见的受跟踪文件，执行前先用 `status --short` 确认没有未提交改动，避免路径收缩时误判文件“消失”。
 - 恢复完整工作树可执行 `git -C <local-directory> sparse-checkout disable`；恢复完整历史可执行 `git -C <local-directory> fetch --unshallow`。partial clone 的缺失 Blob 仍会在访问时按需下载；若需要真正自包含的离线副本，应在联网时显式访问或重新获取所需对象。恢复操作只增加本地文件或对象，若结果不符合预期，可重新运行 `sparse-checkout set <path>` 收窄工作区；不需要保留该分析副本时，先核对绝对路径和未提交改动，再删除整个明确的克隆目录。
 
+#### 浅克隆遇到远端强制更新或 `unrelated histories`
+
+浅克隆的历史边界可能制造“假分叉”。如果远端分支被强制更新，或者用 `--depth=1` 重新获取了新尖端，本地旧 commit 可能仍是新 commit 的真实祖先，却因为共同祖先在浅边界之外而暂时不可见。此时 `git status` 可能显示两边各有一个 commit，`git merge --ff-only origin/<branch>` 还可能报 `refusing to merge unrelated histories`；这不能直接证明两个项目真的没有共同历史。
+
+先确认工作区、两端 SHA 和浅克隆状态，再逐步加深历史：
+
+```bash
+git -C <local-directory> status --short --branch
+git -C <local-directory> rev-parse HEAD
+git -C <local-directory> rev-parse origin/<branch>
+git -C <local-directory> rev-parse --is-shallow-repository
+git -C <local-directory> fetch --deepen=<n> origin <branch>
+git -C <local-directory> merge-base --is-ancestor HEAD origin/<branch>
+git -C <local-directory> merge --ff-only origin/<branch>
+```
+
+逐行说明：
+
+1. 前四条命令分别记录工作区、当前 commit、远端跟踪引用和是否为浅克隆；它们只读，不改变工作区或历史。
+2. `git -C <local-directory> fetch --deepen=<n> origin <branch>`：从 `origin` 下载更多历史并把浅边界向前推进 `<n>` 层，同时更新 `origin/<branch>`；不会自动切换分支、合并提交或修改远端。`<n>` 应按仓库历史规模选择，先小后大。
+3. `git -C <local-directory> merge-base --is-ancestor HEAD origin/<branch>`：检查当前 commit 是否已成为远端尖端的祖先；退出码为 0 才表示快进条件成立，仍只读。
+4. `git -C <local-directory> merge --ff-only origin/<branch>`：在确认祖先关系且工作区干净后只做快进；若仍无法快进会安全失败，不会创建合并提交。
+
+如果加深后仍找不到共同祖先，先用 `git log --graph --oneline HEAD origin/<branch>` 审查两边历史，确认是否真的是换仓库、换分支或远端重写成了独立历史；不要直接使用 `--allow-unrelated-histories`，也不要用 `reset --hard` 掩盖问题。需要完整历史时，可在确认磁盘和网络条件后执行 `git -C <local-directory> fetch --unshallow origin <branch>`；若本地尖端含有必须保留的独立 commit，先创建备份分支并改用显式的 merge、rebase 或重新克隆方案。
+
+本条已用本机 Git 2.55.0.windows.3 验证：浅副本在远端强制更新后先出现 `refusing to merge unrelated histories`，执行 `fetch --deepen=100` 补齐祖先后，`merge --ff-only` 成功快进。`fetch --deepen` 只增加本地对象和历史可见范围；真正改变当前分支指针和工作树的是后续的快进合并。
+
 ### 11. 本地非裸仓库作为 remote 时拒绝更新已检出分支
 
 如果 `git remote -v` 显示 remote 是另一个本地工作目录，而不是 GitHub URL，向它当前检出的分支执行 `git push` 会被 Git 拒绝：
@@ -1498,6 +1717,8 @@ https://github.com/<owner>/<repo>/releases/download/<version>/<package-asset>
 - 不要用“把 PAT 内置进公开更新器”解决限流。PAT 会被提取并扩大账号或仓库风险，公开 Release 的免配置客户端不需要这种凭据。
 
 `git push` 只更新分支和 commit，不会自动创建 GitHub Release，也不会替换 Release 资产。若更新器读取的是 `releases/latest`，仅推送源码后客户端仍会下载上一个 Release；必须另外从目标 commit 构建资产、创建或更新 Release，并核对 `targetCommitish` 和资产摘要。反过来，使用源码目录测试时才通过 `git pull`/`fetch` 获取分支提交，不要把“分支已推送”和“二进制更新已发布”混为一谈。
+
+GitHub 还会为每个 Release 自动生成 `Source code (zip/tar.gz)` 标签源码快照，它不等于项目上传的二进制/升级资产，不能当作发布产物；核对真实资产需结合远端标签和 `gh release view --json assets`（必要时再加 `--jq '.[].name'` 或按资产名筛选），并把标签与资产一一对应。
 
 稳定发布可包含三个资产：完整 ZIP、独立更新器、带版本、文件名、大小和 SHA-256 的 JSON 清单。更新器先读取 `releases/latest`，下载到缓存并校验清单，再解压到 staging；保护用户配置、日志、录像和本地 ZIP 后，创建完整备份，在原目录内逐文件写入临时文件并用 `os.replace` 原子替换，根目录本身不改名、不删除。Windows 短暂占用时对文件操作退避重试；失败时从完整备份执行文件级回滚，成功后保留旧版备份。若用户手动下载 ZIP，优先直接读取目标目录中的包，避免再次复制大文件到系统临时目录；即使更新器会先把自身复制为临时 worker，也只应把原 ZIP 的绝对路径传给 worker，不能把数百 MB 的 ZIP 一起复制。
 
@@ -1654,6 +1875,82 @@ git push --force-with-lease origin <branch>
 
 1. `git push --force-with-lease origin <branch>`：允许非快进更新，但要求 lease 仍有效；精确 SHA 形式比隐式 lease 更可靠。
 
+### 15. 把一个提交摘到当前分支（cherry-pick）
+
+口语里说的“pick 一下某个 commit”，指的就是 `git cherry-pick`：把**指定 commit 的补丁和提交信息**复制到**当前分支**，生成一个**新 commit（新 hash）**。它与 merge、rebase 的分工不同：
+
+- `merge`：把一条分支的历史整体并入，保留原有 commit，并产生合并点；
+- `rebase`：把**自己**的一串 commit 搬到新基底上，重写这些 commit 的 hash；
+- `cherry-pick`：只挑出**指定的几个 commit** 复制过来，原分支和原 commit 都不动，因此**别人 fork 里的提交也能摘**。
+
+操作前先确认这三件事，否则容易摘到重复、已废弃或根本没下载下来的改动：
+
+```bash
+git remote -v
+git cat-file -t <commit>
+git branch -a --contains <commit>
+```
+
+逐行说明：
+
+1. `git remote -v`：列出所有 remote 的 fetch/push URL，确认改动来源仓库是否已经添加。
+2. `git cat-file -t <commit>`：只读查询对象类型（commit/tree/blob）；报 `could not get object info` 说明该对象还没进入本地对象库，需要先 fetch。
+3. `git branch -a --contains <commit>`：列出包含该 commit 的本地与远端分支，用来判断改动是否已经在目标分支（例如 `upstream/main`）里。
+
+从第三方 fork 摘一个提交的完整流程：
+
+```bash
+git remote add <contributor> https://github.com/<owner>/<repo>.git
+git fetch <contributor>
+git switch -c <new-branch> upstream/main
+git cherry-pick -x <commit>
+git show --stat --oneline HEAD
+```
+
+逐行说明：
+
+1. `git remote add <contributor> https://github.com/<owner>/<repo>.git`：为第三方 fork 新增 remote；命名用 fork 所有者，避免和 `origin`（自己的 fork）、`upstream`（上游）混淆。
+2. `git fetch <contributor>`：下载该 fork 的对象和远端跟踪引用，不改当前工作区。
+3. `git switch -c <new-branch> upstream/main`：以目标基准分支（通常是上游 main）新建工作分支；不要直接在正在提 PR 的分支上摘，否则会把无关改动混进那个 PR。
+4. `git cherry-pick -x <commit>`：把该 commit 的补丁应用到当前分支并生成新 commit；`-x` 在提交信息里追加 `(cherry picked from commit <sha>)`，保留来源追溯，跨仓库摘提交时建议始终加上。
+5. `git show --stat --oneline HEAD`：核对新提交实际改了哪些文件。
+
+补充判断与风险：
+
+- **hash 一定变了**：pick 之后 commit id 不同，不能再用 hash 判断“是否已经摘过”。判断补丁等价性用 patch-id 系列命令：`git cherry -v <upstream> <head>` 中前缀 `-` 表示上游已有等价补丁、`+` 表示还没有；`git log --cherry-mark --left-right <a>...<b>` 可批量标注等价提交。
+- **补丁已存在**：若改动已在上游，cherry-pick 会遇到“变成空提交”而停下（`--empty` 取 `stop|drop|keep`，默认为停止）。确认确实重复后用 `git cherry-pick --skip` 跳过，不要用 `--allow-empty` 硬造空提交。
+- **冲突**：解决冲突后 `git add <file>`，再 `git cherry-pick --continue`；要完全放弃、回到 pick 之前用 `git cherry-pick --abort`；只跳过当前这个 commit 用 `--skip`。处于冲突状态时 `git status` 会提示当前在 cherry-pick 序列中，不要中途遗忘收尾。
+- **二进制文件（图片、PDF、固件等）**：Git 无法对二进制做三方合并，冲突时只能整份二选一（`git checkout --theirs -- <file>` 取被摘的那一侧，`--ours` 取当前分支那一侧），没有“两边自动融合”。这类资源通常不 cherry-pick，而是直接在目标分支重做，避免把不想要的整份文件覆盖进来。
+- **作者归属**：cherry-pick 保留原作者（author），只把 committer 换成本次执行的人，这是正确行为，不要手工改成自己。
+- **恢复路径**：`git cherry-pick --abort` 可退回序列开始前的状态；若已产生提交才发现摘错，用 `git reflog` 找到 pick 之前的 HEAD，再 `git reset --hard <sha>`（执行前确认工作区没有需要保留的改动）。
+
+### 16. 把已推送分支的多个 commit 压成一个（squash）
+
+评审要求「一个提交说清一件事」时，常要把自己 PR 分支上的多个提交压成一个。当分支就是「基线 + N 个提交」这种简单形态、且不需要顺带变基时，不必开交互式 rebase，用软重置重建一次提交更可控：
+
+```bash
+git show -s --format=%T HEAD                        # 压缩前记录树哈希
+git branch backup/<name>-before-squash HEAD         # 留恢复路径
+git reset --soft <true-base>                        # 只移动 HEAD，暂存区仍是分支最终内容
+git commit -m "<PR 标题>"
+git show -s --format=%T HEAD                        # 与压缩前逐字符相同才算内容零变化
+git push --force-with-lease=refs/heads/<branch>:<expected-old-sha> origin <branch>
+```
+
+逐行说明：
+
+1. `git show -s --format=%T HEAD`：只输出该提交的树哈希。压缩只应改变提交粒度、不应改变内容，所以前后两次 `%T` 必须完全一致；这比「diff 看起来一样」更硬。
+2. `git branch backup/<name>-before-squash HEAD`：强推前用本地备份引用指向旧历史。恢复时 `git reset --soft backup/<name>-before-squash` 再强推即可，工作区不受影响。
+3. `git reset --soft <true-base>`：把 HEAD 移回分支真正的基线，暂存区仍保持分支最终内容，所以下一条 `git commit` 正好重建出「基线 + 一个提交」。`<true-base>` 用 `git merge-base <branch> upstream/<base-branch>` 取，不要图省事写成已经前进的上游分支名，否则新提交会把上游期间别人的改动一并「回退」进去。
+4. `git commit -m "<PR 标题>"`：压缩后的提交信息直接用 PR 标题，符合多数仓库以 PR 标题作为最终提交信息的约定。
+5. `git show -s --format=%T HEAD`：与第 1 步输出比较。
+6. `git push --force-with-lease=refs/heads/<branch>:<expected-old-sha> origin <branch>`：改写已推送历史只能强推；把预期旧 SHA 写全，远端在期间被他人更新时会安全拒绝而不是覆盖。
+
+- 用途与适用条件：适用于自己 fork 上的 PR 分支。基线已前进（`behind_by > 0`）时本流程不改变基线，只压缩提交粒度；顺手变基属于另一个决定，不要混在同一次操作里。
+- 检查方法：压缩后除树哈希外，再用 `git log --oneline <base>..HEAD` 确认只剩一个提交、用 `git show --name-only --format= HEAD` 核对文件数不变；强推后以 `git ls-remote origin refs/heads/<branch>` 比对本地 `HEAD`，并 `git fetch origin <branch>` 后比较 `git show -s --format=%T origin/<branch>` 与本地一致，最后确认 PR 页面的提交数已变为 1。
+- 风险与恢复：强推会丢弃远端旧历史，协作分支必须先协商。若强推后发现问题，`git reset --soft backup/<name>-before-squash` 恢复旧提交（工作区不动），再用带预期 SHA 的 `--force-with-lease` 推回；确认新历史无误后再删备份分支。
+- PowerShell 提示：树哈希用 `--format=%T` 读取。`HEAD^{tree}` 这类带花括号的写法在某些 shell/工具封装下会被外层解释器改写，报 `fatal: ambiguous argument '<乱码>'`，`%T` 没有这个风险。
+
 ## 附录 A：GitHub 专题与故障排查
 
 ### A.1 GitHub Pages 自定义域名一直显示 DNS 检查中
@@ -1681,6 +1978,8 @@ Resolve-DnsName -Name <domain> -Type AAAA -Server 1.1.1.1 -DnsOnly
 - 用途与适用条件：确认根域名的 A 记录、`www` 的 CNAME，以及是否残留错误的 AAAA 记录。还可把 `-Server` 换成域名的权威 DNS 服务器，对比“权威记录已正确”和“公共缓存已更新”是不是同时成立。这些命令只查询 DNS，不改仓库、域名记录或 Git 历史。
 - 判定规则：多个公共解析器都返回 GitHub 文档规定的目标时，通常不应继续反复修改 DNS；GitHub 页面仍显示检查中多半是其后台尚未完成轮询。DNS 传播可能需要最长约 24 小时，HTTPS 证书也可能稍后才可启用。等待期间刷新 Pages 设置页即可。
 - 继续排障：超过传播窗口仍未通过时，检查仓库 `Settings -> Pages` 的发布分支和目录、发布目录内是否存在入口 `index.html`、Custom domain 是否只填域名而没有 `https://`，并删除冲突的同名 A/AAAA/CNAME 或危险的通配符记录。域名解析正确但页面 404 属于部署或入口文件问题，不是 DNS 问题。
+- 重启证书签发：如果权威 DNS 与多个公共解析器都已返回正确记录、HTTP 已能命中目标 Pages 站点、仓库根部的 `CNAME` 也正确，但 HTTPS 仍返回仅覆盖 `*.github.io` 的证书且 Pages 长时间显示检查中，可以按 GitHub 官方 HTTPS 排障流程，在 `Settings -> Pages` 点击 Custom domain 旁的 `Remove`，随即重新输入同一域名并保存。该操作会取消并重新启动域名验证及证书签发，不需要删除正确的 DNS 记录或改动网站内容。
+- 操作风险与验收：移除到重新保存之间，自定义域会短暂解除绑定；应事先核对仓库和域名，缩短这段间隔，不要同时修改 DNS。重新保存后，等页面显示 `DNS check successful`，确认 `Enforce HTTPS` 已可用再勾选；最后分别验证根域名 HTTPS 返回页面、`www` 的 HTTPS 安全跳转，以及证书的 Subject Alternative Name 同时覆盖实际要使用的域名。只看到 HTTP 200 或浏览器缓存中的旧页面，不足以证明证书已经修复。
 - 风险与恢复：DNS 查询无须恢复。修改解析前先导出或截图现有记录；误改后应恢复已核对的原记录并等待 TTL，而不是不断删除、重建正确记录。GitHub 建议先在 Pages 中添加或验证自定义域名，再去 DNS 服务商配置，以减少域名被他人错误绑定的风险。
 
 ### A.2 GitHub 仓库链接返回 404 时的判别与核验
@@ -1850,28 +2149,144 @@ gh release view <tag> --repo <owner>/<repo> --json assets,targetCommitish,url
 
 ### A.8 GitHub 推送被本机代理阻断
 
-如果 Git 报告 `proxyconnect tcp: dial tcp 127.0.0.1:9`、`Could not connect to server` 等错误，先检查代理来源；常见来源是当前进程的 `ALL_PROXY`、`HTTP_PROXY`、`HTTPS_PROXY`、`GIT_HTTP_PROXY` 或 `GIT_HTTPS_PROXY` 环境变量，也可能来自 Git 配置。不要因为一次代理连接失败就重复创建提交或仓库。
+如果 Git 报告 `proxyconnect tcp: dial tcp 127.0.0.1:9`、`Could not connect to server` 等错误，先检查代理来源。Git 官方文档把 HTTP(S) 代理的标准环境变量列为 `http_proxy`、`https_proxy` 和 `all_proxy`；Windows 环境变量名称不区分大小写，所以 PowerShell 也常显示为大写。`no_proxy` 是“不走代理”的主机例外清单，不是代理地址。`GIT_HTTP_PROXY` 和 `GIT_HTTPS_PROXY` 并不是 Git 官方定义的通用代理 URL 变量；不要把名称相近的 `GIT_HTTP_PROXY_AUTHMETHOD` 误当成代理地址。代理也可能来自 Git 的 `http.proxy`、URL 专用 `http.<url>.proxy` 或 `remote.<name>.proxy` 配置。语义依据见 Git 官方 [git-config](https://git-scm.com/docs/git-config) 文档。
 
-PowerShell 中可以只为当前进程清除这些代理变量，再重试已明确目标的推送：
+PowerShell 中仅在确认当前网络允许直连时，临时清除当前进程的标准代理变量，并为这一次 Git 命令显式禁用通用及目标 remote 的代理配置。先保存原值，确保成功或失败后都会恢复：
 
 ```powershell
-$env:ALL_PROXY = $null
-$env:HTTP_PROXY = $null
-$env:HTTPS_PROXY = $null
-$env:GIT_HTTP_PROXY = $null
-$env:GIT_HTTPS_PROXY = $null
-git push origin <branch>
+$oldHttpProxy = $env:http_proxy
+$oldHttpsProxy = $env:https_proxy
+$oldAllProxy = $env:all_proxy
+try {
+    Remove-Item Env:http_proxy, Env:https_proxy, Env:all_proxy -ErrorAction SilentlyContinue
+    git -c http.proxy= -c "remote.<remote>.proxy=" push <remote> <branch>
+} finally {
+    $env:http_proxy = $oldHttpProxy
+    $env:https_proxy = $oldHttpsProxy
+    $env:all_proxy = $oldAllProxy
+}
 ```
 
 逐行说明：
 
-1. `$env:ALL_PROXY = $null`：仅清除当前 PowerShell 进程中的该代理变量，不改永久配置。
-2. `$env:HTTP_PROXY = $null`：仅清除当前 PowerShell 进程中的该代理变量，不改永久配置。
-3. `$env:HTTPS_PROXY = $null`：仅清除当前 PowerShell 进程中的该代理变量，不改永久配置。
-4. `$env:GIT_HTTP_PROXY = $null`：仅清除当前 PowerShell 进程中的该代理变量，不改永久配置。
-5. `$env:GIT_HTTPS_PROXY = $null`：仅清除当前 PowerShell 进程中的该代理变量，不改永久配置。
-6. `git push origin <branch>`：把指定本地分支或 refspec 推送到目标 remote；普通 push 不允许破坏性的非快进覆盖。
+1. `$oldHttpProxy = $env:http_proxy`：保存当前进程的 HTTP 代理原值；只读环境变量，不改 Git 状态。
+2. `$oldHttpsProxy = $env:https_proxy`：保存当前进程的 HTTPS 代理原值。
+3. `$oldAllProxy = $env:all_proxy`：保存当前进程的通用代理原值。
+4. `try {`：开始需要临时改变代理环境的操作区间。
+5. `Remove-Item Env:http_proxy, Env:https_proxy, Env:all_proxy -ErrorAction SilentlyContinue`：只清除当前 PowerShell 进程及其后续子进程可见的三个代理变量；不存在时不报错，不改用户级或系统级环境变量。
+6. `git -c http.proxy= -c "remote.<remote>.proxy=" push <remote> <branch>`：`-c` 只为本次命令把通用 HTTP(S) 代理和目标 remote 的代理设为空，再普通推送指定分支；必须把两处 `<remote>` 替换为同一个实际 remote 名称。普通 push 不允许破坏性的非快进覆盖。
+7. `} finally {`：无论 Git 成功、失败还是抛出异常，都进入恢复区间。
+8. `$env:http_proxy = $oldHttpProxy`：恢复原 HTTP 代理；原值为空时仍保持未配置。
+9. `$env:https_proxy = $oldHttpsProxy`：恢复原 HTTPS 代理。
+10. `$env:all_proxy = $oldAllProxy`：恢复原通用代理。
+11. `}`：结束恢复区间。
 
-- 用途与适用条件：仅在确认代理地址失效、且当前网络允许直连 GitHub 时使用。变量只影响当前 PowerShell 进程及其子进程，不会永久修改 Windows 用户或系统环境变量，也不会改工作区、提交历史或远端以外的 Git 状态。
-- 检查方法：先用 `Get-ChildItem Env: | Where-Object { $_.Name -match '(?i)proxy' }` 查看当前进程代理，再用 `git config --show-origin --get-regexp '(^|\\.)proxy($|\\.)'` 检查 Git 配置。推送后用 `git ls-remote origin refs/heads/<branch>` 或已认证的 `gh api repos/<owner>/<repo>/git/ref/heads/<branch>` 比较远端 SHA 与 `git rev-parse HEAD`；如果 Git 的凭据助手仍不可用，先修复凭据或使用本机已认证的安全凭据助手，不要把 Token 写入命令行、仓库或日志。
-- 风险与恢复：清除代理变量可能让本来必须经过企业代理的网络请求失败；命令结束后关闭该 PowerShell，或在新进程中恢复原有环境变量。若直连仍失败，停止重试并按企业网络或代理设置排查；不要为了绕过错误使用 `--force`。
+- 用途与适用条件：只适用于已经确认代理地址失效、目标 remote 使用 HTTP(S)、且当前网络允许直连的场景。环境变量变更只短暂影响当前 PowerShell 及其子进程，两个 `-c` 配置只影响这一条 Git 命令；`push` 成功时会修改目标远端分支，但不会改本地工作区。SSH remote 不受这些 HTTP 代理设置控制。
+- 检查方法：先用 `Get-ChildItem Env: | Where-Object { $_.Name -match '(?i)proxy' }` 查看当前进程环境，再用 `git config --show-origin --get-regexp '\.proxy$'` 检查通用、URL 专用和 remote 专用的代理配置；命令返回状态 1 也可能只是没有匹配项。推送后用 `git ls-remote <remote> refs/heads/<branch>` 或已认证的 `gh api repos/<owner>/<repo>/git/ref/heads/<branch>` 比较远端 SHA 与 `git rev-parse HEAD`。如果 Git 的凭据助手仍不可用，先修复凭据或使用本机已认证的安全凭据助手，不要把 Token 写入命令行、仓库或日志。
+- 风险与恢复：绕过企业代理可能违反网络策略或使连接失败；不确定是否允许直连时不要执行。`finally` 会恢复进程级代理变量；如果 PowerShell 在恢复前被强制终止，新开的 PowerShell 会重新继承父进程的原环境。写操作超时或断线时不要盲目重试，先核对远端引用是否已更新；若远端出现非预期 SHA，停止推送并按远端写入恢复流程处理，不要改用 `--force`。
+
+### A.9 GitHub CLI 已登录但 Git HTTPS 凭据助手失败
+
+`gh auth status` 显示已登录，不等于 Git 的 HTTPS 凭据助手一定能正常工作。如果 `git fetch` 或 `git push` 报 Schannel 凭据初始化错误，随后又提示 `No anonymous write access` 或 `Authentication failed`，先判断为本机凭据助手/TLS 后端问题，不要把 Token 写进 remote URL、命令参数或日志。
+
+两类报错签名要先分清，处理方式不同：
+
+- 只读操作（`git fetch`、`git ls-remote`）报 `schannel: AcquireCredentialsHandle failed: SEC_E_NO_CREDENTIALS (0x8009030e)`：这是 TLS 后端问题，与登录状态无关，只给本次命令换后端即可，不需要动凭据。
+
+```bash
+git -c http.sslBackend=openssl ls-remote --heads upstream   # 只读探测远端分支，验证换后端后能否连通
+git -c http.sslBackend=openssl fetch --prune upstream       # 拉取并清理陈旧远端引用，仍不改工作区
+```
+
+- `git push` 同时出现 `fatal: could not read Username for 'https://github.com': terminal prompts disabled` 与 MSYS/Cygwin 的 `sh.exe: *** fatal error - CreateFileMapping S-1-5-... Win32 error 5.  Terminating.`：说明 Git 通过 `sh` 启动 `!` 形式的凭据助手（本机配置为 `!'C:\Program Files\GitHub CLI\gh.exe' auth git-credential`）时被拒，创建共享内存映射失败；受限执行环境（沙箱或受限令牌）也常报 `sh.exe: *** fatal error - couldn't create signal pipe, Win32 error 5`，属于同一类管道/共享内存创建被拒，不要据此重置 Token。此时 `gh auth status` 往往完全正常，不要因此重置 Token，也不要把 remote 改写成含明文 Token 的 URL。先用 `git config --show-origin --get-all credential.helper` 确认助手来源，再在权限不受限的普通终端重跑同一条 `git push`；是否真的推上去仍以 `git ls-remote origin refs/heads/<branch>` 与 `git rev-parse HEAD` 是否一致为准。
+
+- `git push` 报 `error: failed to execute prompt script (exit code 66)`，随后是 `fatal: could not read Username for 'https://github.com': No such file or directory` 以及 `sh.exe`/`bash.exe: *** fatal error - couldn't create signal pipe, Win32 error 5`：这与上一条同源，都是凭据助手启动的 shell 无法创建管道，**不代表凭据失效，也不代表 TLS 后端是瓶颈**。先判断限制来自哪里，再选方案，不要一上来就套用替代凭据助手：
+
+  1. **限制来自执行环境时，解除限制后原样重跑即可。** 若 `push` 运行在沙箱、受限令牌等禁止创建管道/共享内存的环境里，先放宽该环境权限，再重跑同一条 `git -c http.sslBackend=openssl push -u origin <branch>`。已验证：限制解除后这条命令能直接推送成功（输出 `* [new branch]` 并建立跟踪关系），既不需要 `GIT_ASKPASS`，也不需要 `extraheader`。判别依据是同一会话里 `fetch`/`ls-remote` 换后端后已能连通，而 `push` 报的是 shell 管道错误而不是 `Authentication failed`——这说明卡点是管道创建权限，不是凭据内容。
+  2. **限制确实无法解除时，才退到替代方案。** `GIT_ASKPASS` 同样要启动 shell，常会一并失败；此时用下面的 `GIT_CONFIG_*` + `http.https://github.com/.extraheader` 一次性请求头方案。
+
+  两条路径的成功判据相同：`git -c http.sslBackend=openssl ls-remote origin refs/heads/<branch>` 与 `git rev-parse HEAD` 一致。另外，`-c http.sslBackend=openssl` 只影响当前命令，不要为了让某条命令通过而改写全局 `http.sslBackend`。
+
+优先尝试已配置的 SSH 密钥；没有可用密钥时，可以用一次性的 `GIT_ASKPASS` 程序从 `gh auth token` 读取当前登录凭据，并禁用本次命令的其他 credential helper：
+
+```powershell
+$env:GIT_ASKPASS = '<temporary-askpass-script>'
+$env:GIT_TERMINAL_PROMPT = '0'
+git -c http.sslBackend=openssl -c credential.helper= push -u origin <branch>
+Remove-Item Env:GIT_ASKPASS
+Remove-Item Env:GIT_TERMINAL_PROMPT
+```
+
+其中临时 askpass 程序只在收到密码提示时调用 `gh auth token`，Token 通过标准输出管道交给 Git，不应写入文件内容；命令完成后立即删除该程序。`http.sslBackend=openssl` 仅对当前命令生效，用于绕过已确认有问题的 Schannel，不改变全局 Git 配置。
+
+如果受限环境连 `GIT_ASKPASS` 启动的 shell 也无法创建，可以把 GitHub CLI 已登录凭据转换为本次 Git 子进程专用的 HTTP 请求头。不要把 Token 或编码后的请求头写进 remote URL、命令文本、文件或日志：
+
+```powershell
+$token = (gh auth token).Trim()
+$basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$token"))
+$env:GIT_CONFIG_COUNT = '2'
+$env:GIT_CONFIG_KEY_0 = 'http.sslBackend'
+$env:GIT_CONFIG_VALUE_0 = 'openssl'
+$env:GIT_CONFIG_KEY_1 = 'http.https://github.com/.extraheader'
+$env:GIT_CONFIG_VALUE_1 = "AUTHORIZATION: basic $basic"
+try {
+    git push origin <branch>
+} finally {
+    Remove-Item Env:GIT_CONFIG_COUNT,Env:GIT_CONFIG_KEY_0,Env:GIT_CONFIG_VALUE_0,Env:GIT_CONFIG_KEY_1,Env:GIT_CONFIG_VALUE_1
+    $token = $null
+    $basic = $null
+}
+```
+
+这组 `GIT_CONFIG_*` 变量只给当前 PowerShell 及其子进程提供临时 Git 配置；`finally` 确保成功或失败后都清理变量。它适用于 `gh auth status` 已确认登录、普通凭据助手失败且 SSH 不可用的场景；它不会修改全局 Git 配置，但当前进程和子进程在执行期间能读取请求头，因此不要同时运行不受信任的程序。若 `git push` 失败，先清理变量并保留本地 commit，再核对远端，不要输出变量内容或把它改成含明文 Token 的 URL。
+
+推送后必须用 `git ls-remote origin refs/heads/<branch>` 比较远端 SHA 与 `git rev-parse HEAD`；一致才算推送成功。若失败，保留本地 commit，先检查 GitHub CLI 登录状态、远端 URL 和网络，不要改用明文 Token 或 `--force`。
+
+### A.10 用 GitHub 隐私邮箱提交
+
+Git 提交会永久记录作者和提交者的姓名、邮箱；公开仓库中的这些信息也会公开。若不希望公开私人邮箱，应先到 GitHub 的 `Settings → Emails` 复制 GitHub 实际提供的 `noreply` 地址，不要自行猜测地址格式。GitHub 官方说明：命令行提交使用本机 Git 配置的邮箱；使用账户设置中提供的 `noreply` 地址，既能隐藏私人邮箱，也能让 GitHub 正确关联贡献记录。
+
+只为当前仓库设置隐私邮箱，并修正尚未推送的最新提交：
+
+```bash
+git config --local user.email "<GitHub 提供的 noreply 地址>"
+git config --show-origin --get user.email
+git commit --amend --no-edit --reset-author
+git show -s --format=fuller HEAD
+```
+
+逐行说明：
+
+1. `git config --local user.email ...`：把邮箱写入当前仓库的 `.git/config`，覆盖本仓库中的全局邮箱设置；不会影响其他仓库、工作区文件或远端。
+2. `git config --show-origin --get user.email`：显示当前生效的邮箱及配置来源，用于确认确实来自当前仓库。
+3. `git commit --amend --no-edit --reset-author`：重建最新提交，保留原提交说明，并用当前姓名和邮箱重置作者信息；会改变最新 commit 的哈希，但不改工作区文件。
+4. `git show -s --format=fuller HEAD`：检查最新提交的 `Author`、`Commit`、`AuthorDate` 和 `CommitDate`，不修改任何状态。
+
+- 适用条件：`--amend` 只用于尚未推送、尚未分享的最新提交。执行前先用 `git status --short --branch` 确认分支关系；若担心误操作，可先创建本地备份分支。
+- 风险与恢复：amend 会改写本地历史；若结果不对，可以从备份分支或 `git reflog` 找回原提交。备份分支仍可能保留旧邮箱，但只要未推送就不会因此公开。
+- 已发布历史：更改 Git 配置只影响之后新建或重建的提交，不会自动清除旧提交里的邮箱。不要仅为隐藏旧邮箱就随意改写共享分支；这会改变后续所有 commit 哈希，并可能需要协作方重新同步。先设置未来提交的隐私邮箱；确需清理公开历史时，应单独评估影响并使用有明确通知和恢复方案的历史重写流程。
+- 额外保护：可以在 GitHub 的邮箱设置中启用阻止暴露私人邮箱的命令行推送；它能在检测到私人邮箱时拒绝推送，但不能替代提交前检查。
+
+### A.11 PowerShell 把 git 的 stderr 进度当成错误
+
+Windows PowerShell 会把外部程序写到 stderr 的正常进度信息包装成 `NativeCommandError`，因此 `git fetch`、`git push`、`git clone` 即使已经成功，也可能显示成一片红字报错，例如（实测 Windows PowerShell 5.1）：
+
+```text
+git : From https://github.com/<owner>/<repo>
+所在位置 行:3 字符: 1
++ git -C <repo> fetch --prune upstream 2>&1 | Select-Object -First 5
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (From https://gi...eed/sipeed_wiki:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+   a9e06c9f..d76c2cbe  main       -> upstream/main
+```
+
+最后一行才是真正的结果行：`<old-sha>..<new-sha>  <branch> -> <branch>` 表示引用已经更新。
+
+判断与处理：
+
+- 看动作行本身：`From <url>`、`* [new branch]`、`<old-sha>..<new-sha>  <branch> -> <branch>` 这类行出现在红字里，就说明操作其实成功了。
+- 用独立命令验收，不要只凭观感：`git status --short --branch`、`git ls-remote <remote> refs/heads/<branch>`、`git rev-parse HEAD` 三者比对是否一致。
+- `2>&1` 会把 stderr 一起送进管道；再接 `Select-String` / `Where-Object` 过滤时，`fatal:` 之类的关键行可能被过滤条件丢掉，看起来像「命令没有输出」。核对远端写入时先看完整输出，再做过滤（与「查看 PR 相对上游的改动」一节的同类提醒一致）。
+- 该现象只影响显示，不影响 Git 行为；不要因此重跑推送、改用 `--force` 或重设凭据。
