@@ -11,8 +11,6 @@ exclude:
   - NOTES.md
   - README.md
   - node_modules
-  - Gemfile
-  - Gemfile.lock
 
 markdown: kramdown
 
