@@ -139,3 +139,13 @@
 - 顺带修正：附录 A.8 被整段重写。旧版把 `GIT_HTTP_PROXY` / `GIT_HTTPS_PROXY` 当成常见代理来源，新版按 Git 官方 `git-config` 更正为标准变量 `http_proxy` / `https_proxy` / `all_proxy`，并改成「保存原值 → 用 `-c http.proxy= -c remote.<remote>.proxy=` 只影响本次命令 → `finally` 恢复」的写法。
 - 桌面 `git.md` 本轮未修改：这是发布同步，没有产生新的、已验证的 Git 知识（维护协议要求「先完成用户请求，再只记录新知识」）。
 - 验收：`node _tools/check.mjs` 全绿（含 front matter 完整性、Liquid 配对、站内链接）；本地文件 LF、无 BOM。
+
+### 2026-11-05 · 手机助手整体下线
+
+- 需求：「把我那个家庭给删了，现在不需要了」。确认范围：整个 `/chat/` 页面 + 源码 + Cloudflare Worker 一并删除，不留「已下线」提示页。
+- 删除：`chat/`（8 个文件）、`_chat-src/`（1721 个文件，含 `backend/node_modules` 与 `.wrangler` 状态）。
+- 入口清理：`index.html` 导航、`_data/projects.yml` 项目卡、`sitemap.xml`、`404.md` 四处去掉 `/chat/`。
+- 检查链路：`_tools/check.mjs` 删掉只服务于 chat 的「源→产物」「副本一致」两段（`createHash` / `sha` 一并移除），章节重编号为 1、2；`.github/workflows/ci.yml` 删掉 `test-all.mjs` 那一步。
+- 文档处理：`_guides/backend-serverless.md` 的「当前实例：[手机助手](/chat/)」改成泛化说法（原文是活链接，删页面后会变死链）；`_guides/publish-and-rollback.md` 保留 `/chat/` 作为历史案例并标注 2026-11-05 下线；`updates.md` 加一条公开记录。
+- 未完成：Cloudflare Worker `family-assistant`（`api.wangyuyue.xyz`）未删 —— wrangler 4.131.2 的 OAuth 令牌已过期，非交互环境下无法刷新（`whoami` 报 "Not logged in"）。需在 Dashboard 手动删，或重新 `wrangler login` 后执行 `wrangler delete family-assistant`。
+- 后果：家人手机上已安装的 PWA 图标点开会 404，需手动删除。

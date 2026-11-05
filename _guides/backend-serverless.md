@@ -10,7 +10,7 @@ guide_order: 4
 
 > 适用对象：静态网站已经上线，现在需要一个「不能让访客看到密钥」的接口的人  
 > 前置知识：同站的[《域名、网站上线与 Ubuntu 服务器指南》](/guides/domain-hosting/)（域名、DNS、HTTPS、宝塔与 Docker 部分）  
-> 当前实例：`wangyuyue.xyz` 的[手机助手](/chat/)：网页留在 GitHub Pages，接口挂在 Cloudflare Worker 上  
+> 示例形态：网页留在 GitHub Pages，接口挂在自己的子域名上（Cloudflare Worker）  
 > 更新日期：2026-09-22
 
 前一篇讲的是「把网页发出去」，这一篇讲它的下一步：**网页还是静态的，但需要一个能保密的后端。**

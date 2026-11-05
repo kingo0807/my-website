@@ -3,55 +3,26 @@
  *
  *   node _tools/check.mjs
  *
- * 检查四件事：
- *   1. 源文件与线上产物是否一致（不一致说明忘了跑 deploy.mjs）；
- *   2. 同一文件的两份副本是否还逐字节相同；
- *   3. 站点模板的 Liquid 标签是否配对、每篇指南的 front matter 是否完整；
- *   4. 站内链接指向的指南和资源是否真的存在。
+ * 检查两件事：
+ *   1. 站点模板的 Liquid 标签是否配对、每篇指南的 front matter 是否完整；
+ *   2. 站内链接指向的指南和资源是否真的存在。
  *
  * 目录名以 _ 开头，Jekyll 不会把它发布到网站。
  */
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const rel = (p) => join(ROOT, p);
 const read = (p) => readFileSync(rel(p), 'utf8');
-const sha = (p) => createHash('sha256').update(readFileSync(rel(p))).digest('hex');
 
 let fail = 0;
 const ok = (m) => console.log('  PASS  ' + m);
 const bad = (m) => { fail++; console.log('  FAIL  ' + m); };
 
-/* ---------- 1. 源 → 产物 ---------- */
-console.log('== 源与产物 ==');
-const PRODUCTS = [
-  'index.html', 'manifest.json', 'sw.js',
-  'icon-192.png', 'icon-512.png', 'icon-180.png', 'icon-512-maskable.png',
-];
-for (const f of PRODUCTS) {
-  const src = '_chat-src/' + f;
-  const out = 'chat/' + f;
-  if (!existsSync(rel(src)) || !existsSync(rel(out))) { bad('缺少 ' + f); continue; }
-  if (sha(src) === sha(out)) ok('一致 chat/' + f);
-  else bad('chat/' + f + ' 与源码不一致，跑一下 node _chat-src/deploy.mjs');
-}
-
-/* ---------- 2. 两份副本 ---------- */
-console.log('== 副本一致 ==');
-const MIRRORS = [
-  ['_chat-src/backend/worker.js', '_chat-src/backend-worker.js'],
-  ['_chat-src/backend/server.mjs', '_chat-src/backend-server.mjs'],
-];
-for (const [a, b] of MIRRORS) {
-  if (sha(a) === sha(b)) ok('一致 ' + b);
-  else bad(b + ' 与 ' + a + ' 内容不同了，两份要一起改');
-}
-
-/* ---------- 3. 模板与 front matter ---------- */
+/* ---------- 1. 模板与 front matter ---------- */
 console.log('== 模板 ==');
 const TEMPLATES = [
   'index.html', '404.md', 'sitemap.xml', 'updates.md',
@@ -78,7 +49,7 @@ const conf = read('_config.yml');
 if (/exclude:[\s\S]*NOTES\.md/.test(conf)) ok('_config.yml 仍排除 NOTES.md');
 else bad('_config.yml 不再排除 NOTES.md，开发记录会出现在公网上');
 
-/* ---------- 4. 站内链接 ---------- */
+/* ---------- 2. 站内链接 ---------- */
 console.log('== 站内链接 ==');
 const slugs = new Set(guides.map((f) => f.replace(/\.md$/, '')));
 const SCAN = ['index.html', 'updates.md', '404.md', 'guides/index.md', '_layouts/article.html']

@@ -19,7 +19,4 @@ sitemap: false
 {%- endif %}
   </url>
 {%- endfor %}
-  <url>
-    <loc>{{ '/chat/' | absolute_url | xml_escape }}</loc>
-  </url>
 </urlset>

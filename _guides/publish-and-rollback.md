@@ -10,7 +10,7 @@ guide_order: 5
 
 > 适用对象：网站已经在跑、改动开始变多，并且遇到过「我这儿是新的、你那儿还是旧的」的人  
 > 前置知识：同站的[《给静态网站加后端（无服务器函数）》](/guides/backend-serverless/)（部署、密钥、验证清单）与[《域名、网站上线与 Ubuntu 服务器指南》](/guides/domain-hosting/)（DNS、HTTPS、分层排障）  
-> 当前实例：`wangyuyue.xyz`——网页在 GitHub Pages，`/chat/` 是一个带离线缓存的 PWA，接口挂在 Cloudflare Worker 上  
+> 当前实例：`wangyuyue.xyz`——网页在 GitHub Pages，接口挂在 Cloudflare Worker 上。下文用当时的 `/chat/`（一个带离线缓存的 PWA）举例，该页面已于 2026-11-05 下线，方法仍然适用  
 > 更新日期：2026-09-23
 
 前两篇讲的是"怎么上线""怎么加后端"。这一篇讲**改完之后的事**：一次改动要穿过四层关卡才算真的到用户手里，以及出了问题该从哪一层退回去。
