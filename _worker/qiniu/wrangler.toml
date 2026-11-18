@@ -1,0 +1,31 @@
+# 七牛上传工具的后端
+#
+# 部署：
+#   cd _worker/qiniu
+#   npx wrangler secret put QN_AK
+#   npx wrangler secret put QN_SK
+#   npx wrangler secret put TOOL_TOKEN      # 页面口令，随便定一串
+#   npx wrangler deploy
+#
+# 本地调试：
+#   .dev.vars 放同样的四个变量（这个文件必须进 .gitignore，别提交）
+#   npx wrangler dev
+
+name = "qiniu-upload"
+main = "src/index.js"
+compatibility_date = "2026-11-18"
+
+# 自定义域名走 Cloudflare 的 zone，部署时会自动加解析
+routes = [
+  { pattern = "api.wangyuyue.xyz", custom_domain = true }
+]
+
+[vars]
+# 空间名与外链域名
+QN_BUCKET = "wyy-files"
+QN_DOMAIN = "toofb0znl.hn-bkt.clouddn.com"
+
+# 上传入口按空间区域选：华南-广东 = up-z2（区域表见 kodo/1671）
+QN_UPLOAD_URL = "https://up-z2.qiniup.com"
+
+# QN_AK / QN_SK / TOOL_TOKEN 不放这里，用 wrangler secret 写入

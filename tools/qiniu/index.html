@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>上传与刷新 · 工具箱</title>
+<style>
+  :root {
+    --fg: #1f2328; --bg: #ffffff; --muted: #6b7280; --line: #e5e7eb;
+    --accent: #2563eb; --ok: #15803d; --bad: #b91c1c; --warn: #b45309;
+    --panel: #f8fafc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fg: #e6edf3; --bg: #0d1117; --muted: #8b949e; --line: #30363d;
+      --accent: #58a6ff; --ok: #3fb950; --bad: #f85149; --warn: #d29922;
+      --panel: #161b22;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto; padding: 32px 20px 80px; max-width: 860px;
+    font: 15px/1.7 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    color: var(--fg); background: var(--bg);
+  }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  p.lead { color: var(--muted); margin: 0 0 28px; font-size: 14px; }
+  section { border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 18px; }
+  h2 { font-size: 14px; margin: 0 0 12px; color: var(--muted); font-weight: 600;
+       letter-spacing: .04em; text-transform: uppercase; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  input[type=text], input[type=password] {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--fg); font: inherit; font-size: 14px;
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 220px; }
+  button {
+    padding: 8px 14px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--panel); color: var(--fg); font: inherit; font-size: 14px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  #drop {
+    border: 1.5px dashed var(--line); border-radius: 8px; padding: 26px; text-align: center;
+    color: var(--muted); font-size: 14px; cursor: pointer; margin-top: 10px;
+  }
+  #drop.hot { border-color: var(--accent); color: var(--accent); }
+  .result { margin-top: 14px; padding: 12px; border-radius: 8px; background: var(--panel); display: none; }
+  .result.on { display: block; }
+  .url { font-family: ui-monospace, Consolas, monospace; font-size: 13px; word-break: break-all; }
+  .hint { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+  #log {
+    font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; line-height: 1.8;
+    max-height: 320px; overflow: auto; background: var(--panel); border-radius: 8px;
+    padding: 12px; white-space: pre-wrap; word-break: break-word;
+  }
+  .t { color: var(--muted); }
+  .ok { color: var(--ok); }
+  .bad { color: var(--bad); }
+  .warn { color: var(--warn); }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 20px; font-size: 12px;
+         border: 1px solid var(--line); color: var(--muted); }
+</style>
+</head>
+<body>
+
+<h1>上传与刷新</h1>
+<p class="lead">
+  文件从浏览器直传七牛，密钥不出后端；上传完自动刷新 CDN 缓存，并回读外链确认新内容真的生效。
+</p>
+
+<section>
+  <h2>1 · 连接</h2>
+  <div class="row">
+    <div>
+      <label for="worker">Worker 地址</label>
+      <input id="worker" type="text" placeholder="https://api.wangyuyue.xyz" value="https://api.wangyuyue.xyz">
+    </div>
+    <div>
+      <label for="token">口令</label>
+      <input id="token" type="password" placeholder="TOOL_TOKEN">
+    </div>
+  </div>
+  <div class="hint">口令只存在这个标签页的 sessionStorage 里，关掉浏览器就没了。</div>
+</section>
+
+<section>
+  <h2>2 · 传一个文件</h2>
+  <label for="key">保存成什么名字（key）</label>
+  <input id="key" type="text" placeholder="留空就用原文件名，例如 test/v1.png">
+  <div id="drop">把文件拖到这里，或者点击选择</div>
+  <input id="file" type="file" hidden>
+  <div class="hint">
+    key 就是外链里的路径，含扩展名、逐字符比较。同名覆盖才能替换旧文件，`.png` 和 `.jpg` 是两个对象。
+  </div>
+</section>
+
+<section>
+  <h2>3 · 或者，直接给一个源链接</h2>
+  <div class="row">
+    <div style="flex:2 1 320px">
+      <label for="src">源文件 URL</label>
+      <input id="src" type="text" placeholder="https://example.com/a.png">
+    </div>
+    <div>
+      <label for="srckey">存成什么名字</label>
+      <input id="srckey" type="text" placeholder="a.png">
+    </div>
+  </div>
+  <button id="pull" style="margin-top:12px">拉取并上传（≤50MB）</button>
+</section>
+
+<section>
+  <h2>4 · 结果</h2>
+  <div id="result" class="result">
+    <div class="url" id="link"></div>
+    <div class="row" style="margin-top:12px">
+      <button id="copy">复制链接</button>
+      <button id="refresh" class="primary">刷新 CDN 缓存</button>
+      <span class="tag" id="verify">未校验</span>
+    </div>
+    <div class="hint">
+      刷新生效通常 1～2 分钟，官方说法是 5～10 分钟。点完别关页面，工具会自己回读外链比对。
+    </div>
+  </div>
+  <div id="log" style="margin-top:14px">就绪。</div>
+</section>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const state = { url: '', size: 0, hash: '' };
+
+$('worker').value = localStorage.getItem('qiniu.worker') || 'https://api.wangyuyue.xyz';
+$('token').value = sessionStorage.getItem('qiniu.token') || '';
+$('worker').addEventListener('change', () => localStorage.setItem('qiniu.worker', $('worker').value.trim()));
+$('token').addEventListener('change', () => sessionStorage.setItem('qiniu.token', $('token').value.trim()));
+
+function log(msg, cls) {
+  const box = $('log');
+  const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  const line = document.createElement('div');
+  line.innerHTML = `<span class="t">${now}</span>  <span class="${cls || ''}">${msg}</span>`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+function api(path, init) {
+  const base = $('worker').value.trim().replace(/\/+$/, '');
+  if (!base) throw new Error('先填 Worker 地址');
+  return fetch(base + path, {
+    ...init,
+    headers: {
+      'content-type': 'application/json',
+      'x-tool-token': $('token').value.trim(),
+      ...(init && init.headers),
+    },
+  });
+}
+
+/* 测试域名（*.clouddn.com）没有证书，只能用 http */
+function publicUrl(domain, key) {
+  const scheme = /clouddn\.com$/.test(domain) ? 'http' : 'https';
+  return `${scheme}://${domain}/${key.split('/').map(encodeURIComponent).join('/')}`;
+}
+
+/* 给人看的版本：中文不转义，方便复制贴进文档。刷新和校验仍用转义后的 URL，
+   因为浏览器请求时带的就是转义形式，CDN 的缓存键也是它。 */
+function prettyUrl(u) {
+  try { return decodeURI(u); } catch { return u; }
+}
+
+function showResult(url, size, hash) {
+  state.url = url; state.size = size; state.hash = hash || '';
+  $('link').textContent = prettyUrl(url);
+  $('result').classList.add('on');
+  $('verify').textContent = '未校验';
+  $('verify').className = 'tag';
+}
+
+/* ---------- 上传 ---------- */
+async function uploadFile(file) {
+  const key = ($('key').value.trim() || file.name).replace(/^\/+/, '');
+  log(`准备上传 ${file.name}（${(file.size / 1024).toFixed(1)} KB）→ key: <b>${key}</b>`);
+
+  const tokenRes = await api('/api/token', { method: 'POST', body: JSON.stringify({ key }) });
+  const tokenData = await tokenRes.json();
+  if (!tokenRes.ok) throw new Error(tokenData.error || '拿上传凭证失败');
+  log('拿到上传凭证（有效期 10 分钟，只对这一个 key 有效）', 'ok');
+
+  const form = new FormData();
+  form.append('token', tokenData.token);
+  form.append('key', key);
+  form.append('file', file, key.split('/').pop());
+
+  log('直传七牛中…');
+  const up = await fetch(tokenData.uploadUrl, { method: 'POST', body: form });
+  const text = await up.text();
+  if (!up.ok) throw new Error('上传失败：' + text.slice(0, 200));
+  const info = JSON.parse(text);
+  log(`上传完成，服务端 hash: ${info.hash || '(未返回)'}`, 'ok');
+
+  const url = publicUrl(tokenData.domain, key);
+  showResult(url, file.size, info.hash || '');
+  log(`外链：${prettyUrl(url)}`);
+  return url;
+}
+
+/* ---------- 刷新 + 回读校验 ---------- */
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function refreshAndVerify() {
+  if (!state.url) return;
+  $('refresh').disabled = true;
+  $('verify').textContent = '刷新中';
+  $('verify').className = 'tag warn';
+  try {
+    const res = await api('/api/refresh', { method: 'POST', body: JSON.stringify({ urls: [state.url] }) });
+    const data = await res.json();
+    if (!res.ok || data.code !== 200) {
+      throw new Error(`${data.code || res.status} ${data.error || ''} ${(data.invalidUrls || []).join(',')}`);
+    }
+    log(`刷新任务已受理，requestId: ${data.requestId}`, 'ok');
+    if (data.urlSurplusDay != null) log(`今日剩余刷新额度：${data.urlSurplusDay} / ${data.urlQuotaDay}`, 'warn');
+
+    await verifyLoop(data.requestId);
+  } catch (err) {
+    log('刷新失败：' + err.message, 'bad');
+    $('verify').textContent = '失败';
+    $('verify').className = 'tag bad';
+  } finally {
+    $('refresh').disabled = false;
+  }
+}
+
+async function verifyLoop(requestId) {
+  const deadline = Date.now() + 10 * 60 * 1000;
+  let round = 0;
+
+  while (Date.now() < deadline) {
+    round++;
+    await sleep(5000);
+    const res = await fetch(
+      $('worker').value.trim().replace(/\/+$/, '') +
+        '/api/check?url=' + encodeURIComponent(state.url) +
+        '&token=' + encodeURIComponent($('token').value.trim()),
+    );
+    const h = await res.json();
+    const sizeOk = String(h.length) === String(state.size);
+    const hashOk = state.hash && h.etag && h.etag === state.hash;
+    log(
+      `第 ${round} 次回读：HTTP ${h.status}，长度 ${h.length || '?'}` +
+        `${state.size ? '（应 ' + state.size + '）' : ''}，etag ${h.etag || '?'}，缓存 ${h.cache || '?'}` +
+        ` ${hashOk ? '内容已更新' : sizeOk ? '长度已对上' : '还是旧内容'}`,
+      hashOk || sizeOk ? 'ok' : 'warn',
+    );
+
+    if (hashOk || sizeOk) {
+      // 任务侧也确认一下
+      try {
+        const r2 = await api('/api/refresh/status', { method: 'POST', body: JSON.stringify({ requestId }) });
+        const st = await r2.json();
+        const item = (st.items || [])[0];
+        if (item) log(`刷新任务状态：${item.state}（${item.progress}%）`, item.state === 'success' ? 'ok' : 'warn');
+      } catch { /* 查询失败不影响主流程 */ }
+
+      $('verify').textContent = hashOk ? '已生效（内容一致）' : '已生效（长度一致）';
+      $('verify').className = 'tag ok';
+      log('校验通过：对外已经是新文件。', 'ok');
+      return;
+    }
+  }
+  $('verify').textContent = '超时未生效';
+  $('verify').className = 'tag bad';
+  log('10 分钟内没等到新内容。缓存分层生效较慢时可以稍后再点一次校验。', 'bad');
+}
+
+/* ---------- 事件绑定 ---------- */
+const drop = $('drop');
+drop.addEventListener('click', () => $('file').click());
+drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('hot'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('hot'));
+drop.addEventListener('drop', (e) => {
+  e.preventDefault(); drop.classList.remove('hot');
+  const f = e.dataTransfer.files[0];
+  if (f) run(() => uploadFile(f));
+});
+$('file').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  if (f) run(() => uploadFile(f));
+});
+
+$('pull').addEventListener('click', () => run(async () => {
+  const src = $('src').value.trim();
+  const key = ($('srckey').value.trim() || src.split('/').pop().split('?')[0]).replace(/^\/+/, '');
+  if (!src || !key) throw new Error('源链接和名字都要填');
+  log(`让服务端去取 ${src}`);
+  const res = await api('/api/pull', { method: 'POST', body: JSON.stringify({ src, key }) });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '拉取失败');
+  const domain = (await (await api('/api/token', { method: 'POST', body: JSON.stringify({ key }) })).json()).domain;
+  const url = publicUrl(domain, key);
+  log(`拉取并上传完成：${(data.size / 1024).toFixed(1)} KB`, 'ok');
+  showResult(url, data.size, (data.upstream && data.upstream.hash) || '');
+  log(`外链：${prettyUrl(url)}`);
+}));
+
+$('copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(prettyUrl(state.url));
+    log('已复制到剪贴板', 'ok');
+  } catch {
+    log('复制失败，手动选中链接吧', 'bad');
+  }
+});
+
+$('refresh').addEventListener('click', () => run(refreshAndVerify));
+
+async function run(fn) {
+  try {
+    await fn();
+  } catch (err) {
+    log('出错：' + (err && err.message ? err.message : err), 'bad');
+  }
+}
+</script>
+</body>
+</html>

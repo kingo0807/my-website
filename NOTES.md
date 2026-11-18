@@ -149,3 +149,40 @@
 - 文档处理：`_guides/backend-serverless.md` 的「当前实例：[手机助手](/chat/)」改成泛化说法（原文是活链接，删页面后会变死链）；`_guides/publish-and-rollback.md` 保留 `/chat/` 作为历史案例并标注 2026-11-05 下线；`updates.md` 加一条公开记录。
 - 未完成：Cloudflare Worker `family-assistant`（`api.wangyuyue.xyz`）未删 —— wrangler 4.131.2 的 OAuth 令牌已过期，非交互环境下无法刷新（`whoami` 报 "Not logged in"）。需在 Dashboard 手动删，或重新 `wrangler login` 后执行 `wrangler delete family-assistant`。
 - 后果：家人手机上已安装的 PWA 图标点开会 404，需手动删除。
+
+### 2026-11-18 · 七牛云上传自动化：先手工把链路验证完
+
+- 需求：领导要求「研究怎么把已有服务自动化」，点名七牛云这类——提供一个网页，放链接、上传、刷新一条龙，像已有的 CI 一样。用户要求做在本站上，并额外写一份流程与问题文档供后续学习。
+- 本次做到哪（全是手工验证，还没写代码）：注册七牛个人账号并实名；建空间 `wyy-files`（华南-广东 `cn-south-1`、公开读）；传测试图拿外链；用 `curl.exe -I` 连续观察响应头，把缓存与刷新验完。
+- 实测到的事实：
+  - 新空间自动配 CDN **测试域名**（形如 `xxx.hn-bkt.clouddn.com`），30 天回收、每天回源 10GB、禁 apk/ipa/exe/dmg、**仅 HTTP 无证书**、`X-Kodo-Force-Download: true` 强制下载；
+  - 测试域名算 CDN 域名（详情页有「刷新 CDN 缓存」入口），默认 `Cache-Control: public, max-age=31536000`（一年）；
+  - 缓存分层，判断命中看 `Age` 与 `X-Bdcdn-Cache-Status` / `X-Qnm-Cache` / `X-Response-Cache`；本次节点 `Server: Byte-nginx`，说明走的是融合 CDN；
+  - 同名覆盖后 CDN 仍发旧内容（`Age: 271`、`TCP_HIT`、`Content-Length: 178865`）；控制台刷新后变 `TCP_MISS` + `Age: 0`，`Content-Length` 与 `Content-Md5` 同时更新；
+  - key 含扩展名且逐字符比较：`.jpg` 与 `.png` 是两个对象，第一次「同名覆盖」因为这个失败，实验作废重做；
+  - 控制台文件列表的大小/时间列会滞后，判断以详情页为准。
+- 官方文档核实：绑定自定义域名（CDN 加速域名、源站域名）都要求域名在工信部备案，且自 2022-06-08 起有 ICP 备案巡检（[kodo/8555](https://developer.qiniu.com/kodo/8555/set-the-custom-cdn-to-accelerate-the-domain-name)、[kodo/8556](https://developer.qiniu.com/kodo/8556/set-the-custom-source-domain-name)）；刷新仅对 CDN 域名外链生效、控制台每天 500 个额度（[kodo/12360](https://developer.qiniu.com/kodo/12360/refresh-the-cdn-cache)）；S3 兼容服务域名不支持匿名访问（[kodo/4088](https://developer.qiniu.com/kodo/4088/s3-access-domainname)）。
+- 产出：新增指南 `_guides/qiniu-pipeline.md`（`guide_order: 6`），写清四个动作、两种凭证、实测响应头、坑清单、自动化设计与上生产条件。
+- 设计决定（写代码时按这个来）：密钥只留在服务端；浏览器拿短期 uploadToken 直传，文件字节不经过自己的服务器；刷新后必须回读 `Content-Length` / `Content-Md5` 校验通过才算成功；每次操作落一条记录（谁、何时、哪个 key、刷没刷成）。
+- 待办：AK/SK 尚未配置；页面与 Worker 未创建（计划 `tools/qiniu/index.html`、`_worker/qiniu/src/index.js`、`_worker/qiniu/wrangler.toml`）；刷新接口的返回结构、一次条数上限、耗时分布待实测；上生产需要备案域名 + HTTPS 证书 + 防盗链。
+
+### 2026-11-18 · 七牛上传工具：代码落地、部署与两处签名坑
+
+- 需求延续上一条：把手工验证过的东西做成网页。用户要求最小改动，工具做在本站。
+- 新增三个文件：
+  - `tools/qiniu/index.html`：单页工具，无依赖。四件事：拖文件直传、贴源链接由服务端代取（`/api/pull`，≤50MB）、显示外链、刷新并回读校验；
+  - `_worker/qiniu/src/index.js`：Cloudflare Worker，五个接口 `/api/token`、`/api/refresh`、`/api/refresh/status`、`/api/check`、`/api/pull`，外加 `/api/health`（诊断用，只回密钥长度与首尾字符）；`_worker/` 以 `_` 开头，Jekyll 不发布；
+  - `_worker/qiniu/wrangler.toml`：`custom_domain` 绑 `api.wangyuyue.xyz`，`QN_*` 走 `[vars]`，AK/SK 与 `TOOL_TOKEN` 走 `wrangler secret`。
+- 官方文档核实（本轮新增）：
+  - 区域表按 `kodo/1671` 用**简称**：华南-广东是 `z2`、上传入口 `https://up-z2.qiniup.com`；`cn-south-1` 是 S3 兼容那套叫法，别混用；
+  - CDN 接口（`fusion.qiniuapi.com`）用 QBox 鉴权：签名串是「路径 + 换行」，**JSON 请求体不参与**，base64url **保留尾部 `=`**；
+  - 刷新约束：单次 ≤20 个 URL、文件刷新 500 次/天（响应里 `urlSurplusDay` 给剩余）、目录刷新 11 次/天且需开通；错误码 `400034` 配额用完、`400037` 该 URL 正在刷新、`400031` URL 格式错；官方给的生效时间是 5～10 分钟。
+- 踩的两个坑（都跟「算法没写错但就是不工作」有关）：
+  - **签名拼法实测**：用四种拼法各打一次真接口，只有 `path+"\n"` 且保留 `=` 返回 200，其余（去 `=`、带 body、带 method）全是 401 BadToken。2018 年那篇 curl 示例会误导人，以 2026 版《鉴权指南》为准；
+  - **密钥粘错字符**：`BadToken` 反复修不好，最后用 `sha256(密钥)[0..12]` 对比发现 AK 对、**SK 不是同一个字符串**——但它长度 40、开头 `tf`、结尾 `4` 全都对。用控制台「复制」按钮重粘一次即好。教训：**排查凭证要比哈希，不能比长度和首尾字符**。
+- 工具跑通后的实测数据：刷新接口 200 → 第 1 次回读（7 秒后）`Content-Length` 与 `Etag` 已对上 → 此时七牛任务状态仍 `processing(20%)`。结论：**任务状态不等于生效状态，回读才是**。
+- 工程环境坑：
+  - 会话内 `npx wrangler deploy` 会被沙箱挡两处（npm 缓存目录 `EPERM`、wrangler 经 esbuild 启动子进程 `spawn EPERM`），需 `danger-full-access` 才能部署；
+  - 本机 PowerShell 的 schannel 在受限环境下报 `SEC_E_NO_CREDENTIALS`，HTTPS 全挂；但 Node 自带 TLS 正常，所以调试脚本一律用 `node -e` + `https`，不用 `Invoke-WebRequest`/`curl`；
+  - PowerShell 传 JSON 给 `curl.exe` 会丢双引号（JSON 解析报 position 1），改用 `Invoke-RestMethod` 或转义引号。
+- 待办：七牛密钥尚未轮换（这对已出现在聊天记录里）；大文件分片、异步抓取接口、目录刷新未实测；页面上的“复制链接”在 `file://` 下不可用（上线后正常）。

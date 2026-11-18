@@ -1,0 +1,7 @@
+# Wrangler 的本地状态：部署时会生成，含 Cloudflare 账号信息
+_worker/qiniu/.wrangler/
+
+# 本地开发用的密钥文件，永远不进仓库
+**/.dev.vars
+**/.env
+**/.env.local
