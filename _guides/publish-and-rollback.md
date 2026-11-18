@@ -184,6 +184,33 @@ curl -s -o /dev/null -w "%{http_code}\n" https://api.wangyuyue.xyz/balance
 
 第 3 步最容易被跳过：状态码 200 只说明"服务器在"，不说明"内容是新的"。
 
+### 6.1 把这份清单变成一条命令
+
+上面五步靠人记，做两次就会漏。仓库里现在有这个脚本：
+
+```bash
+node _tools/verify-live.mjs              # 立刻查一次
+node _tools/verify-live.mjs --wait 300   # 最多等 5 分钟，轮询到全绿为止
+```
+
+它查四件事：
+
+1. 抓 `/sitemap.xml`，逐条请求，要求 200 **并且**页面里有 `<title>`；
+2. 拿本地 `_guides/*.md` 和已知静态页去对 sitemap，**漏一页就报错**；
+3. 断言首页和 `/guides/` 里真的出现预期文案和指南标题——这是防"200 但是旧版本"；
+4. 请求一个随机不存在的地址，要求返回 404，防止部署把 404 页搞坏。
+
+第 2 条不是凑数。本站有两个页面天生不进 sitemap：`/updates/` 和 `/tools/qiniu/`。它们没有 front matter，Jekyll 当静态文件原样复制，模板循环自然收不到。表现就是**站点全绿、人肉访问正常、搜索引擎看不见**——这种问题人不会主动去查，只能靠断言守着。发现之后在 `sitemap.xml` 里手写两条 `<url>` 补上。
+
+脚本和仓库里那份 `_tools/check.mjs` 是分工关系，别混：
+
+| 脚本 | 查什么 | 要不要联网 |
+| --- | --- | --- |
+| `check.mjs` | 模板 Liquid、front matter、站内链接 | 不要，跑在提交前 |
+| `verify-live.mjs` | 部署生效没有、sitemap 全不全、404 还正常吗 | 要，跑在部署后 |
+
+`.github/workflows/verify-live.yml` 在 push 到 main 后跑 `--wait 300`。本站由 **Cloudflare Pages** 部署，和 workflow 并行开始，所以脚本每 15 秒重试一次，等到全绿就退出，超时才判失败。比 `sleep 60` 靠谱——部署快时 20 秒就过，慢时自动多等；也比"Actions 绿了就算上线"诚实，那个绿只代表构建，不代表用户已经看到。
+
 ## 7. 回滚：四层各有各的动作
 
 | 层 | 动作 | 生效速度 | 要注意 |

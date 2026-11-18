@@ -186,3 +186,13 @@
   - 本机 PowerShell 的 schannel 在受限环境下报 `SEC_E_NO_CREDENTIALS`，HTTPS 全挂；但 Node 自带 TLS 正常，所以调试脚本一律用 `node -e` + `https`，不用 `Invoke-WebRequest`/`curl`；
   - PowerShell 传 JSON 给 `curl.exe` 会丢双引号（JSON 解析报 position 1），改用 `Invoke-RestMethod` 或转义引号。
 - 待办：七牛密钥尚未轮换（这对已出现在聊天记录里）；大文件分片、异步抓取接口、目录刷新未实测；页面上的“复制链接”在 `file://` 下不可用（上线后正常）。
+
+### 2026-11-18 · 新增线上体检 `verify-live`：把"发布完成"变成可断言的事
+
+- 起因：上一条里工具页推送后线上仍是 404，等了两分钟才变 200。这说明"push 成功 + Actions 绿"都不等于"用户看到了新版本"，仓库缺一层部署后的验证。
+- 新增 `_tools/verify-live.mjs`（零依赖，Node 全局 fetch）：抓 `/sitemap.xml` 逐条验 200 且含 `<title>`；拿本地 `_guides/*.md` 与已知静态页反查 sitemap 覆盖；断言首页与 `/guides/` 出现预期文案和指南标题；随机不存在的地址要求 404。`--wait N` 每 15 秒重试一轮，全绿才退出。
+- 新增 `.github/workflows/verify-live.yml`：push 到 main 后跑 `--wait 300`。本站由 **Cloudflare Pages** 部署（不是 GitHub Pages），与 workflow 并行开始，所以必须轮询而不是 `sleep`。
+- 脚本第一次跑就抓到真问题：`sitemap.xml` 只列了 8 条，`/updates/` 和 `/tools/qiniu/` 都不在里面——两者都没有 front matter，Jekyll 当静态文件复制，模板循环收不到。已在 `sitemap.xml` 里手写两条 `<url>` 补上，并加了注释说明"新增静态页要同步加"。
+- 文档：`_guides/publish-and-rollback.md` 新增 6.1 节「把这份清单变成一条命令」，写清两个脚本的分工（`check.mjs` 离线查仓库、`verify-live.mjs` 在线查部署）与"Actions 绿≠用户看到"的判据。
+- 顺带确认的线上状态（2026-11-18 14:02）：sitemap 8 条全部 200，首页/`/updates/`/`/tools/qiniu/` 均 200，不存在的地址返回 404 且是自定义中文页。
+- 已知噪音：连续快速抓十几个 URL 时 Cloudflare 会短暂超时（同一批改成逐条、加 UA 与 800ms 间隔即恢复），所以脚本内部逐条串行、不并发。

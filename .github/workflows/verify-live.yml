@@ -1,0 +1,29 @@
+# 发布后的线上体检：确认「推上去」真的等于「用户看到了」
+#
+# 和 ci.yml 的分工：
+#   ci.yml         push 后跑仓库内部检查（模板、front matter、站内链接），不联网；
+#   verify-live.yml 等 Cloudflare Pages 部署完成，再跑 _tools/verify-live.mjs 查真实线上状态。
+#
+# 之所以要「等」：本站的部署由 Cloudflare Pages 触发，和这个 workflow 是并行开始的，
+# 直接抓大概率抓到上一版。--wait 会每 15 秒重试一次，最多 5 分钟。
+
+name: verify-live
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 等线上生效并体检
+        run: node _tools/verify-live.mjs --wait 300

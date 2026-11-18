@@ -10,6 +10,16 @@ sitemap: false
   <url>
     <loc>{{ '/guides/' | absolute_url | xml_escape }}</loc>
   </url>
+  {%- comment -%}
+    没有 front matter 的静态页不会被 Jekyll 自动收集，必须在这里手工列出来，
+    否则搜索引擎看不到。新增这类页面时记得同步加一条，_tools/verify-live.mjs 会检查。
+  {%- endcomment %}
+  <url>
+    <loc>{{ '/updates/' | absolute_url | xml_escape }}</loc>
+  </url>
+  <url>
+    <loc>{{ '/tools/qiniu/' | absolute_url | xml_escape }}</loc>
+  </url>
 {%- assign ordered_guides = site.guides | sort: 'guide_order' -%}
 {%- for guide in ordered_guides %}
   <url>
