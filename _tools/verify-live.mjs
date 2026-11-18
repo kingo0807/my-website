@@ -59,6 +59,20 @@ function localPages() {
   return { guides, staticPages };
 }
 
+/** 读 _data/projects.yml，拿到首页应该出现的项目卡（不引 YAML 依赖，按块切） */
+function projectCards() {
+  const src = readFileSync(rel('_data/projects.yml'), 'utf8');
+  return src
+    .split(/^-\s+/m)
+    .slice(1)
+    .map((chunk) => ({
+      name: (chunk.match(/^name:\s*"([^"]*)"/m) || [])[1] || '',
+      desc: (chunk.match(/^description:\s*"([^"]*)"/m) || [])[1] || '',
+      repo: (chunk.match(/^repo:\s*"([^"]*)"/m) || [])[1] || '',
+    }))
+    .filter((c) => c.name);
+}
+
 async function runChecks() {
   failures = [];
   const { guides, staticPages } = localPages();
@@ -119,6 +133,20 @@ async function runChecks() {
     const missing = guides.filter((g) => g.title && !idx.body.includes(g.title));
     if (missing.length === 0) pass(`/guides/ 列出了全部 ${guides.length} 篇指南标题`);
     else fail('/guides/ 缺少这些指南的标题：' + missing.map((g) => g.title).join('、'));
+
+    /* 项目卡来自 _data/projects.yml：改数据不等于改模板，
+       所以断言必须从数据里读，不能写死。 */
+    const cards = projectCards();
+    const badCards = cards.filter((c) => {
+      // 描述整句都要对上：截前几个字的话，"Jekyll + Cl" 这种前缀新旧版本都有，等于没断言
+      const okName = !c.name || home.body.includes(c.name);
+      const okDesc = !c.desc || home.body.includes(c.desc);
+      const okRepo = !c.repo || home.body.includes(c.repo.replace(/^https?:\/\//, ''));
+      return !(okName && okDesc && okRepo);
+    });
+    if (cards.length === 0) fail('_data/projects.yml 里一个项目都没解析到');
+    else if (badCards.length === 0) pass(`首页与 projects.yml 的 ${cards.length} 张项目卡一致`);
+    else fail('首页项目卡和数据不一致：' + badCards.map((c) => c.name).join('、'));
   } catch (err) {
     fail('内容断言请求失败：' + err.message);
   }
