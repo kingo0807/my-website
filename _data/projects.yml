@@ -7,12 +7,12 @@
 #   repo        源码仓库地址（可留空）
 
 - name: "我的个人网站"
-  description: "用 Jekyll + GitHub Pages 搭建的个人网站，记录技术笔记与学习过程。"
-  link: "https://wangyuyue.xyz"
-  repo: "https://github.com/kingo0807"
+  description: "用 Jekyll + Cloudflare Pages 搭建的个人网站，记录技术笔记与学习过程。"
+  link: "https://wangyuyue.xyz/guides/"
+  repo: "https://github.com/kingo0807/my-website"
   tags:
     - Jekyll
-    - GitHub Pages
+    - Cloudflare Pages
     - HTML
 
 - name: "teedoc 使用笔记"
